@@ -154,10 +154,11 @@
 		if(!uri) return null;	//invalid URI
 		if(!(/^https?$/).test(uri.scheme) || !normalizeDNSHost(uri.host, requireMultipleLabels)) return null;	//not a valid http(s) URI
 		
-		if(!uri.path){
-			uri.path = "/";
-			uri.uri = uri.scheme+"://"+uri.authority+"/" + (uri.query ? "?"+uri.query : "") + (uri.fragment ? "#"+uri.fragment : "");
-		}
+		uri.port = uri.port || (uri.scheme === "http" ? "80" : "443");
+		uri.authority = (uri.userinfo ? uri.userinfo+"@" : "") + uri.host + ((uri.scheme==="http" && uri.port==="80") || (uri.scheme==="https" && uri.port==="443") ? "" : ":"+uri.port);
+		uri.path = uri.path || "/";
+		
+		uri.uri = uri.scheme+"://"+uri.authority + uri.path + (uri.query ? "?"+uri.query : "") + (uri.fragment ? "#"+uri.fragment : "");
 		
 		return uri;
 		
