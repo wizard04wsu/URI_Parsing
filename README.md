@@ -10,7 +10,7 @@ These do not support IPvFuture literal address formats.
 **Normalizing functions for parts of a URI**
 
 - **`normalizeHost(host)`**  
-  Converts an obscured host to a more readable one.  
+  Converts an [obscured host](http://www.pc-help.org/obscure.htm) to a more readable one.  
   Returns `null` if it's not a valid host.
 
 - **`normalizeDNSHost(host[, requireMultipleLabels])`**  
