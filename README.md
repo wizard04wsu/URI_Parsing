@@ -36,7 +36,7 @@ These do not support IPvFuture literal address formats.
 
 **URI and email parsing functions**
 
-Output of all parsing functions is normalized
+Output of all parsing functions is normalized.
 
 - **`parseURI(uri)`**	 
   Splits a URI into its parts.  
@@ -98,7 +98,7 @@ Output of all parsing functions is normalized
 
 =====
 
-**Helper functions**
+**Miscellaneous functions**
 
 - **`fixHyperlink(str[, allowedSchemes[, domain]])`**  
   Attempts to fix a URI (if needed) and normalizes it. If the string does not have a scheme, it will be assumed that it's meant to be that of the current page (e.g., if `str` is a relative URL).
@@ -114,6 +114,7 @@ Output of all parsing functions is normalized
 
 **General references**
 
-- RFC 3986 "Uniform Resource Identifier (URI): Generic Syntax"   http://tools.ietf.org/html/rfc3986
-- How to Obscure Any URL   http://www.pc-help.org/obscure.htm
-- RFC 6068 "The 'mailto' URI Scheme"	http://tools.ietf.org/html/rfc6068
+- RFC 3986 "Uniform Resource Identifier (URI): Generic Syntax" http://tools.ietf.org/html/rfc3986
+- How to Obscure Any URL http://www.pc-help.org/obscure.htm
+- RFC 6068 "The 'mailto' URI Scheme" http://tools.ietf.org/html/rfc6068
+- RFC 5322 "Internet Message Format" http://tools.ietf.org/html/rfc5322
