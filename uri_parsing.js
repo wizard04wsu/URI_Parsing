@@ -1,83 +1,108 @@
-//normalizing functions for parts of a URI
-//
-// normalizeHost(host)
-// normalizeDNSHost(host[, requireMultipleLabels])	//only accepts IP addresses and DNS domain names as valid
-// normalizeIPv4(ip)
-// normalizeIPv6(ip)
-//
-// normalizePath(path)
-//
-//
-//URI and email parsing functions
-//output of all parsing functions is normalized
-//
-// parseURI(uri)	//splits a URI into its parts
-//
-// parseHttp(uri[, requireMultipleLabels])	//splits an http or https scheme URI into its parts
-//
-// parseMailto(uri)	//splits a mailto scheme URI into its parts
-//
-// parseQuery(queryString)	//splits a query string into an array of name/value pairs
-// parseQuery(queryString, name)	//returns an array of values for the specified name
-//
-// parseEmailAddress(address)	//splits a single email address into its parts
-//
-//
-//
-// fixHyperlink(str[, allowedSchemes[, domain]])	//attempts to fix a URI (if needed) and normalizes it
-
-
-//This script does not support IPvFuture literal address formats
-
-
-//general references:
-// RFC 3986 "Uniform Resource Identifier (URI): Generic Syntax"   http://tools.ietf.org/html/rfc3986
-// How to Obscure Any URL   http://www.pc-help.org/obscure.htm
-// RFC 6068 "The 'mailto' URI Scheme"	http://tools.ietf.org/html/rfc6068
+/**
+ * Validates and normalizes a URI, and splits it into its parts.
+ * 
+ * ParseURI(uri)
+ * @param {string} uri
+ * @return {object} - Object containing the URI and its parts. Null if the URI is invalid. The members depend on if the scheme is http, https, mailto, or something else. Possible members:
+ *   {string} .uri - The normalized URI.
+ *   {string} .scheme
+ *   {string} .authority - For non-http/https/mailto URIs. Empty string if there isn't an authority.
+ *   {object} .authority - For http or https URIs. Coerces to a string of the entire authority.
+ *     {string} .authority.userinfo
+ *     {string} .authority.host - Coerces to a string.
+ *       {array} .authority.host.labels - Array of labels within a domain name. Undefined if it's an IP.
+ *       {string} .authority.host.ip - IP address (IPv4 if possible).
+ *       {string} .authority.host.ipv4 - IPv4 version of the IP.
+ *       {string} .authority.host.ipv6 - IPv6 version of the IP.
+ *     {string} .authority.port
+ *   {string} .path - For non-mailto URIs.
+ *   {array} .query - For non-mailto URIs. An array of name/value pairs (each pair is an object {name, value}). Coerces to a string of the entire query.
+ *   {string} .fragment - For non-mailto URIs.
+ *   {array} .to - For mailto URIs. Array of valid email addresses.
+ *   {array} .cc - For mailto URIs. Array of valid email addresses.
+ *   {array} .bcc - For mailto URIs. Array of valid email addresses.
+ *   {string} .subject - For mailto URIs.
+ *   {string} .body - For mailto URIs.
+ *   {array} .headers - For mailto URIs. An array of additional email headers (each header is an object {name, value}).
+ * 
+ * 
+ * Normalizes a single email address (mailbox) and splits it into its parts.
+ * 
+ * ParseURI.parseEmailAddress(address)
+ * @param {string} address - email address or mailbox (e.g., "display name" <local@domain> )
+ * @return {object} - Object containing the mailbox and its parts. Null if it's invalid.
+ *   {string} .full - If there is a display name: "display name" <local@domain>
+ *                    If there isn't: local@domain
+ *   {string} .simple - local@domain
+ *   {string} .display - display name
+ *   {string} .local - Local part of the address.
+ *   {string} .domain - Domain part of the address. This doesn't have to be a DNS domain or IP to be valid.
+ *   {boolean} .unrecognizedDomain - True if the domain is something other than a DNS domain or IP, otherwise undefined.
+ * 
+ * 
+ * Attempts to fix a URI (if needed) and normalizes it.
+ * 
+ * fixHyperlink(str[, allowedSchemes[, domain]])
+ * //TODO
+ * 
+ * 
+ * This script does not support IPvFuture literal address formats.
+ * 
+ * General references:
+ *   RFC 3986 "Uniform Resource Identifier (URI): Generic Syntax"   http://tools.ietf.org/html/rfc3986
+ *   How to Obscure Any URL   http://www.pc-help.org/obscure.htm
+ *   RFC 6068 "The 'mailto' URI Scheme"	  http://tools.ietf.org/html/rfc6068
+ */
 
 
 (function(){
 	
 	"use strict";
 	
-	this.normalizeHost = normalizeHost;
-	this.normalizeDNSHost = normalizeDNSHost;
-	this.normalizeIPv4 = normalizeIPv4;
-	this.normalizeIPv6 = normalizeIPv6;
-	this.normalizePath = normalizePath;
-	this.parseURI = parseURI;
-	this.parseHttp = parseHttp;
-	this.parseMailto = parseMailto;
-	this.parseQuery = parseQuery;
-	this.parseEmailAddress = parseEmailAddress;
-	this.fixHyperlink = fixHyperlink;
+	function defineProperty(object, propertyName, value, isWritable, isEnumerable, isConfigurable){
+		Object.defineProperty(object, propertyName, { value:value, writable:isWritable, enumerable:isEnumerable, configurable:isConfigurable });
+	}
 	
 	//****************************************************************
 	//**************************** URI *******************************
 	//****************************************************************
 	
-	//normalizes a URI and splits it into its parts
-	//returns an object:
-	//	.uri			//entire normalized URI
-	//	.scheme
-	//	.authority		//entire authority; empty string if there isn't one
-	//	 .userinfo
-	//	 .host
-	//	 .port
-	//	.path
-	//	.query
-	//	.fragment
-	//returns null if URI is not valid
-	//see RFC 3986 http://tools.ietf.org/html/rfc3986
-	function parseURI(uri){
-		
-		var rxp, parts, scheme, authority, userinfo, host, port, path, query, fragment;
+	/**
+	 * Validates and normalizes a URI, and splits it into its parts.
+	 * 
+	 * ParseURI(uri)
+	 * @param {string} uri
+	 * @return {object} - Object containing the URI and its parts. Null if the URI is invalid. The members depend on if the scheme is http, https, mailto, or something else. Possible members:
+	 *   {string} .uri - The normalized URI.
+	 *   {string} .scheme
+	 *   {string} .authority - For non-http/https/mailto URIs. Empty string if there isn't an authority.
+	 *   {object} .authority - For http or https URIs. Coerces to a string of the entire authority.
+	 *     {string} .authority.userinfo - For http or https URIs.
+	 *     {string} .authority.host - Coerces to a string.
+	 *       {array} .authority.host.labels - Array of labels within a domain name. Undefined if it's an IP.
+	 *       {string} .authority.host.ip - IP address (IPv4 if possible).
+	 *       {string} .authority.host.ipv4 - IPv4 version of the IP.
+	 *       {string} .authority.host.ipv6 - IPv6 version of the IP.
+	 *     {string} .authority.port - For http or https URIs.
+	 *   {string} .path - For non-mailto URIs.
+	 *   {array} .query - For non-mailto URIs. An array of name/value pairs (each pair is an object {name, value}). Coerces to a string of the entire query.
+	 *   {string} .fragment - For non-mailto URIs.
+	 *   {array} .to - For mailto URIs. Array of valid email addresses.
+	 *   {array} .cc - For mailto URIs. Array of valid email addresses.
+	 *   {array} .bcc - For mailto URIs. Array of valid email addresses.
+	 *   {string} .subject - For mailto URIs.
+	 *   {string} .body - For mailto URIs.
+	 *   {array} .headers - For mailto URIs. An array of additional email headers (each header is an object {name, value}).
+	 * 
+	 * See RFC 3986 http://tools.ietf.org/html/rfc3986
+	 */
+	function ParseURI(uri){
 		
 		if(!uri) return null;
 		uri = String(uri);
 		
-		rxp = /^([a-z][a-z0-9+.-]*):(?:\/\/((?:(?=((?:[a-z0-9-._~!$&'()*+,;=:]|%[0-9A-F]{2})*))(\3)@)?(?=(\[[0-9A-F:.]{2,}\]|(?:[a-z0-9-._~!$&'()*+,;=]|%[0-9A-F]{2})*))\5(?::(?=(\d*))\6)?)(\/(?=((?:[a-z0-9-._~!$&'()*+,;=:@\/]|%[0-9A-F]{2})*))\8)?|(\/?(?!\/)(?=((?:[a-z0-9-._~!$&'()*+,;=:@\/]|%[0-9A-F]{2})*))\10)?)(?:\?(?=((?:[a-z0-9-._~!$&'()*+,;=:@\/?]|%[0-9A-F]{2})*))\11)?(?:#(?=((?:[a-z0-9-._~!$&'()*+,;=:@\/?]|%[0-9A-F]{2})*))\12)?$/i;
-		/*composed as follows:
+		let rxp = /^([a-z][a-z0-9+.-]*):(?:\/\/((?:(?=((?:[a-z0-9-._~!$&'()*+,;=:]|%[0-9A-F]{2})*))(\3)@)?(?=(\[[0-9A-F:.]{2,}\]|(?:[a-z0-9-._~!$&'()*+,;=]|%[0-9A-F]{2})*))\5(?::(?=(\d*))\6)?)(\/(?=((?:[a-z0-9-._~!$&'()*+,;=:@\/]|%[0-9A-F]{2})*))\8)?|(\/?(?!\/)(?=((?:[a-z0-9-._~!$&'()*+,;=:@\/]|%[0-9A-F]{2})*))\10)?)(?:\?(?=((?:[a-z0-9-._~!$&'()*+,;=:@\/?]|%[0-9A-F]{2})*))\11)?(?:#(?=((?:[a-z0-9-._~!$&'()*+,;=:@\/?]|%[0-9A-F]{2})*))\12)?$/i;
+		/*Composed as follows:
 			^
 			([a-z][a-z0-9+.-]*):															#1 scheme
 			(?:
@@ -103,64 +128,85 @@
 			)?
 			$
 		*/
-		parts = rxp.exec(uri);
+		let parts = rxp.exec(uri);
 		if(!parts) return null;	//invalid URI
 		
-		scheme = parts[1].toLowerCase();
-		authority = parts[2];
-		userinfo = parts[4];
-		host = parts[5];
-		port = parts[6];
-		path = normalizePath(parts[7] || parts[9]);
-		query = parts[11];
-		fragment = parts[12];
+		let scheme = parts[1].toLowerCase(),
+			authority = parts[2],
+			userinfo = parts[4],
+			host = parts[5],
+			port = parts[6],
+			path = normalizePath(parts[7] || parts[9]),
+			query = parts[11],
+			fragment = parts[12];
 		
 		if(authority){
 			if((host = normalizeHost(host)) === null) return null;	//invalid host
 			authority = (userinfo ? userinfo+"@" : "") + host + (port ? ":"+port : "");	//normalize authority
 		}
 		
-		return {
-			uri: scheme+":" + (typeof(authority) !== "undefined" ? "//"+authority : "") + path + (query ? "?"+query : "") + (fragment ? "#"+fragment : ""),
-			scheme: scheme,
-			authority: authority,
-				userinfo: userinfo,
-				host: host,
-				port: port,
-			path: path,
-			query: query,
-			fragment: fragment
-		};
+		uri = scheme+":" + (authority !== (void 0) ? "//"+authority : "") + path + (query ? "?"+query : "") + (fragment ? "#"+fragment : "");
 		
-	};
-	
-	//splits an http or https scheme URI into its parts
-	//returns an object:
-	//	.uri			//entire normalized URI
-	//	.scheme
-	//	.authority		//entire authority
-	//	 .userinfo
-	//	 .host
-	//	 .port
-	//	.path
-	//	.query
-	//	.fragment
-	//returns null if URI is not valid or if requireMultipleLabels===true but there is only one
-	//requireMultipleLabels: specify whether a domain must consist of multiple labels (e.g., if true, "localhost" would be considered invalid)
-	//see RFC 2616 http://tools.ietf.org/html/rfc2616#section-3.2
-	function parseHttp(uri, requireMultipleLabels){
+		let queryObj = {};
+		defineProperty(queryObj, "toString", function (){ return query; }, true, false, true);
+		queryObj.pairs = parseQuery(query);
 		
-		uri = parseURI(uri);
-		if(!uri) return null;	//invalid URI
-		if(!(/^https?$/).test(uri.scheme) || !normalizeDNSHost(uri.host, requireMultipleLabels)) return null;	//not a valid http(s) URI
-		
-		uri.port = uri.port || (uri.scheme === "http" ? "80" : "443");
-		uri.authority = (uri.userinfo ? uri.userinfo+"@" : "") + uri.host + ((uri.scheme==="http" && uri.port==="80") || (uri.scheme==="https" && uri.port==="443") ? "" : ":"+uri.port);
-		uri.path = uri.path || "/";
-		
-		uri.uri = uri.scheme+"://"+uri.authority + uri.path + (uri.query ? "?"+uri.query : "") + (uri.fragment ? "#"+uri.fragment : "");
-		
-		return uri;
+		if((/^https?$/).test(scheme)){	//it's a URL (http or https)
+			
+			host = normalizeDNSHost(host);
+			if(!host) return null;
+			
+			port = port || (scheme === "http" ? "80" : "443");
+			authority = (userinfo ? userinfo+"@" : "") + host.host + ((scheme==="http" && port==="80") || (scheme==="https" && port==="443") ? "" : ":"+port);
+			path = path || "/";
+			
+			uri = scheme+"://"+authority + path + (query ? "?"+query : "") + (fragment ? "#"+fragment : "");
+			
+			let authorityObj = {};
+			defineProperty(authorityObj, "toString", function (){ return authority; }, true, false, true);
+			authorityObj.userinfo = userinfo;
+			authorityObj.host = {};
+			defineProperty(authorityObj.host, "toString", function (){ return host.host; }, true, false, true);
+			authorityObj.host.labels = host.labels;
+			authorityObj.host.ip = host.ip;
+			authorityObj.host.ipv4 = host.ipv4;
+			authorityObj.host.ipv6 = host.ipv6;
+			authorityObj.port = port;
+			
+			return {
+				uri: uri,
+				scheme: scheme,
+				authority: authorityObj,
+				path: path,
+				query: queryObj,
+				fragment: fragment
+			};
+			
+		}
+		else if(scheme === "mailto"){
+			
+			if(authority) return null;
+			
+			return parseMailto({
+					uri: uri,
+					scheme: scheme,
+					path: path,
+					query: query
+				});
+			
+		}
+		else{
+			
+			return {
+				uri: uri,
+				scheme: scheme,
+				authority: authority,
+				path: path,
+				query: queryObj,
+				fragment: fragment
+			};
+			
+		}
 		
 	};
 	
@@ -170,10 +216,9 @@
 	// and RFC 3986 http://tools.ietf.org/html/rfc3986
 	function normalizeHost(host){
 		
-		var ip;
+		let ip;
 		
 		if(host === "") return "";
-		if(!host && host !== 0) return null;
 		host = String(host);
 		
 		if((/^\[[0-9A-F:.]{2,}\]$/i).test(host) && (ip = normalizeIPv6(host.slice(1, -1))) ) return "["+ip+"]";	//it's a valid IPv6 address
@@ -197,41 +242,65 @@
 	};
 	
 	//converts an obscured host to a more readable one; only accepts IP addresses and DNS domain names as valid
-	//returns null if it's not valid or if requireMultipleLabels===true but there is only one
-	//requireMultipleLabels: specify whether a domain must consist of multiple labels (e.g., if true, "localhost" would be considered invalid)
+	//returns null if it's not valid
 	//see RFC 3986 http://tools.ietf.org/html/rfc3986
 	// and RFC 2181 http://tools.ietf.org/html/rfc2181#section-11
-	function normalizeDNSHost(host, requireMultipleLabels){
+	function normalizeDNSHost(host){
 		
 		host = normalizeHost(host);
 		if(!host) return null;
 		
 		if((/[^a-z0-9:\[\].-]/i).test(host)) return null;	//contains invalid characters
 		
-		if(/^\d+(\.\d+){3}$/.test(host) || host[0] === "[") return host;	//it's an IP address
+		if(/^\d+(\.\d+){3}$/.test(host))	//it's an IPv4 address
+			return { host:host, ip:host, ipv4:host, ipv6:"::ffff:"+v4to6(host) };
+		if(host[0] === "["){	//it's an IPv6 address
+			let ipv6 = host.slice(1, -1),
+				ipv4 = v6to4(ip);
+			return { host:(ipv4||host), ip:(ipv4||ipv6), ipv4:ipv4, ipv6:ipv6 };
+		}
 		
-		//it's a domain name
-		if(host.length > 255) return null;	//domain name is too long
-		if(requireMultipleLabels && (/^(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\1(?:\.(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\2)+$/i).test(host))	//require at least two labels
-			return host;	//valid domain
-		else if((/^(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\1(?:\.(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\2)*$/i).test(host))	//allow a single label
-			return host;	//valid domain
+		if(host.length > 255) return null;	//too long for a domain name
+		
+		if((/^(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\1(?:\.(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\2)*$/i).test(host))	//it's a domain name
+			return { host:host, labels:host.split(".") };
 		
 		return null;	//invalid
 		
 	};
 	
+	//converts the four 8-bit decimal values of a normalized IPv4 address to the two low-order 16-bit hexadecimal values of an IPv6 address
+	//see RFC 4291 http://tools.ietf.org/html/rfc4291#section-2.5.5
+	// and RFC 5952 http://tools.ietf.org/html/rfc5952#section-5
+	function v4to6(ip){
+		ip = ip.split(".");
+		return ((ip[0]*256 + ip[1]*1).toString(16) + ":" + (ip[2]*256 + ip[3]*1).toString(16)).toLowerCase();
+	}
+	
+	//converts a normalized IPv6 address to the four 8-bit decimal values of an IPv4 address, or undefined if it can't be converted
+	function v6to4(ip){
+		if(!/^::ffff:[0-9A-F]+:[0-9A-F]+$/i.test(ip)) return void 0;	//can't be converted to IPv4
+		ip = /^::ffff:(.+):(.+)$/i.exec(ip);
+		let h = 1*("0x"+ip[1]),
+			b = h%256,
+			a = (h-b)/256,
+			result = a+"."+b+".";
+		h = 1*("0x"+ip[2]);
+		b = h%256;
+		a = (h-b)/256;
+		return result += a+"."+b;
+	}
+	
 	//see http://www.pc-help.org/obscure.htm
 	// and http://en.wikipedia.org/wiki/IPv4#Address_representations
 	function normalizeIPv4(ip){
 		
-		var parts, val, dwordToIp, vals, i;
-		
 		if(!(/^(?=(\d+|0x[0-9A-F]+))\1(?:\.(?=(\d+|0x[0-9A-F]+))\2){0,3}$/i).test(ip)) return null;	//invalid IP address
 		
-		parts = ip.split(".");
-		vals = [];
-		for(i=0; i<parts.length; i++){	//for each part
+		let parts = ip.split("."),
+			vals = [];
+		for(let i=0; i<parts.length; i++){	//for each part
+			let val;
 			if((/^0x/i).test(parts[1])){
 				val = parseInt(parts[i], 16);	//convert hexadecimal to decimal
 			}
@@ -247,7 +316,7 @@
 			if(i === parts.length-1 && i < 3){
 				//convert dword to decimal parts
 				//e.g., 1179962 becomes 18.1.58
-				dwordToIp = [];
+				let dwordToIp = [];
 				while(i < 4){
 					dwordToIp.unshift(val % 256);
 					val = (val-dwordToIp[0]) / 256;
@@ -267,38 +336,31 @@
 	//see RFC 4291 http://tools.ietf.org/html/rfc4291
 	// and RFC 5952 http://tools.ietf.org/html/rfc5952#section-4
 	// and RFC 5952 http://tools.ietf.org/html/rfc5952#section-5
-	function normalizeIPv6(ip){
-		
-		var fieldsLeft, fieldsRight, compacted, resultLeft = [], resultRight = [], i, rxp, m, longest, includesIPv4;
+	function normalizeIPv6(ip, keepEmbeddedIPv4){
 		
 		if(!(/^[0-9A-F:.]{2,}$/i).test(ip)) return null;	//invalid IP address
-		
-		//converts the four 8-bit decimal values of an IPv4 address to the two low-order 16-bit hexadecimal values of an IPv6 address
-		//see RFC 4291 http://tools.ietf.org/html/rfc4291#section-2.5.5
-		// and RFC 5952 http://tools.ietf.org/html/rfc5952#section-5
-		function v4to6(ip){
-			ip = ip.split(".");
-			return ((ip[0]*256 + ip[1]*1).toString(16) + ":" + (ip[2]*256 + ip[3]*1).toString(16)).toLowerCase();
-		}
 		
 		if(!ip) return null;
 		
 		ip = ip.toLowerCase().split("::");	//split the IP at "::" (if it's used)
 		if(ip.length > 2) return null;	//invalid IP; "::" used multiple times
 		
-		fieldsLeft = ip[0].split(":");
-		compacted = ip.length === 2;
-		fieldsRight = compacted ? ip[1].split(":") : null;
+		let fieldsLeft = ip[0].split(":"),
+			compacted = ip.length === 2,
+			fieldsRight = compacted ? ip[1].split(":") : null,
+			resultLeft = [],
+			resultRight = [],
+			includesIPv4;
 		
 		if(fieldsLeft.length > 8 || (compacted && fieldsLeft.length + fieldsRight.length > 7)) return null;	//invalid IP; too many fields
 		
 		if(fieldsLeft[0] !== ""){	//there are fields on the left side of "::", or "::" isn't used
-			for(i=0; i<fieldsLeft.length; i++){	//for each field
+			for(let i=0; i<fieldsLeft.length; i++){	//for each field
 				if((/^[0-9A-F]{1,4}$/i).test(fieldsLeft[i])){	//valid hex field
 					resultLeft.push(fieldsLeft[i]);
 				}
 				else if(!compacted && i === 6 && fieldsLeft.length === 7 && /^\d+(\.\d+){3}$/.test(fieldsLeft[i]) ){	//last part of entire IP is a ver. 4 IP
-					if(/^(0+:){5}(0+|ffff)$/.test(resultLeft.join(":"))){	//well-known prefix that distinguishes an embedded IPv4
+					if(keepEmbeddedIPv4 && /^(0+:){5}(0+|ffff)$/.test(resultLeft.join(":"))){	//well-known prefix that distinguishes an embedded IPv4
 						includesIPv4 = true;
 						resultLeft.push(normalizeIPv4(fieldsLeft[i]));
 					}
@@ -314,13 +376,13 @@
 		
 		if(compacted){	//"::" is used
 			if(fieldsRight[0] !== ""){	//there are fields on the right side
-				for(i=0; i<fieldsRight.length; i++){	//for each field
+				for(let i=0; i<fieldsRight.length; i++){	//for each field
 					if((/^[0-9A-F]{1,4}$/i).test(fieldsRight[i])){	//valid hex field
 						resultRight.push(fieldsRight[i]);
 					}
 					else if(i === fieldsRight.length-1 && /^\d+(\.\d+){3}$/.test(fieldsRight[i]) ){	//last part of entire IP is a ver. 4 IP
-						if(( /^((0+:)*0+)?$/.test(resultLeft.join(":")) && /^((0+:)*(0+|ffff))?$/.test(resultRight.join(":")) ) ||
-						 /^(0+:){5}(0+|ffff)$/.test(resultLeft.join(":"))){	//well-known prefix that distinguishes an embedded IPv4
+						if(keepEmbeddedIPv4 && ( ( /^((0+:)*0+)?$/.test(resultLeft.join(":")) && /^((0+:)*(0+|ffff))?$/.test(resultRight.join(":")) ) ||
+						 /^(0+:){5}(0+|ffff)$/.test(resultLeft.join(":")) )){	//well-known prefix that distinguishes an embedded IPv4
 							includesIPv4 = true;
 							resultRight.push(normalizeIPv4(fieldsRight[i]));
 						}
@@ -335,7 +397,7 @@
 			}
 			
 			//replace "::" with the zeroes it represents
-			i = (includesIPv4 ? 7 : 8) - (resultLeft.length + resultRight.length);
+			let i = (includesIPv4 ? 7 : 8) - (resultLeft.length + resultRight.length);
 			for(i; i>0; i--){
 				resultLeft.push("0");
 			}
@@ -353,9 +415,9 @@
 		ip = ip.replace(/(^|:)0+([^:.])/g, "$1$2");
 		
 		//replace longest run of multiple zeros with "::" shortcut
-		longest = "";
-		rxp = /(?:^|:)((0:)+0)/g;
-		while(m = rxp.exec(ip)){
+		let longest = "",
+			rxp = /(?:^|:)((0:)+0)/g;
+		while(let m = rxp.exec(ip)){
 			if(m[1].length > longest.length) longest = m[1];
 		}
 		if(longest){
@@ -386,30 +448,17 @@
 	};
 	
 	//parses a query string as a sequence of name/value pairs
-	//if no name is specified, returns an array of name/value pairs (each pair is an object {name, value})
-	//if a name is specified, returns an array of values with that name
-	function parseQuery(queryString, name){
-		
-		var results = [], pairs, pair, i;
+	//returns an array of name/value pairs (each pair is an object {name, value})
+	function parseQuery(queryString){
 		
 		if(!queryString) return [];
 		
-		pairs = queryString.split("&");
-		
-		if(!name && name !== 0){	//no name is specified; return all name/value pairs
-			for(i=0; i<pairs.length; i++){
-				pair = pairs[i].split("=");
-				if(pair.length === 1 || pair[0] === "") continue;	//there is no "=" or no name; skip it
-				results.push( { name: decodeURIComponent(pair.shift()), value: decodeURIComponent(pair.join("=")) } );	//add the name/value pair to the results
-			}
-		}
-		else{	//a name is specified; only return values for that name
-			for(i=0; i<pairs.length; i++){
-				pair = pairs[i].split("=");
-				if(pair.length === 1 || pair[0] === "") continue;	//there is no "=" or no name; skip it
-				if(name != pair.shift()) continue;	//name does not match the one specified; skip it
-				results.push( decodeURIComponent(pair.join("=")) );	//add the value to the results
-			}
+		let pairs = queryString.split("&"),
+			results = [];
+		for(let i=0; i<pairs.length; i++){
+			let pair = pairs[i].split("=");
+			if(pair.length === 1 || pair[0] === "") continue;	//there is no "=" or no name; skip it
+			results.push( { name: decodeURIComponent(pair.shift()), value: decodeURIComponent(pair.join("=")) } );	//add the name/value pair to the results
 		}
 		
 		return results;
@@ -433,23 +482,23 @@
 	//returns null if it's not a valid mailto URI or there is no destination
 	//only includes valid email addresses; the rest are discarded
 	//see RFC 6068 http://tools.ietf.org/html/rfc6068
-	function parseMailto(uri){
-		
-		var parts, headers, i, query = "";
+	function parseMailto(parts){
 		
 		//splits the string at the commas (ignoring commas within quoted strings or comments)
 		//only returns valid email addresses
 		function splitEmailAddresses(str){
 			
-			var parts, rxp, c, commentLevel = 0, inQuote = false, parsed, addresses = [];
+			let parts = str.split(","),
+				commentLevel = 0,
+				inQuote = false,
+				addresses = [];
 			
-			parts = str.split(",");
 			while(parts.length){
 				
-				rxp = /(?:^|[^\\()"])(?:\\\\)*([()"])/g;
+				let rxp = /(?:^|[^\\()"])(?:\\\\)*([()"])/g;
 				
 				//determine if inside a comment or a quoted string
-				while(c = rxp.exec(parts[0])){
+				while(let c = rxp.exec(parts[0])){
 					if(!inQuote){
 						if(c[1] === "(") commentLevel++;
 						else if(c[1] === ")") commentLevel--;
@@ -470,7 +519,7 @@
 					//else there are no more parts; still inside a comment or quoted string; invalid address
 				}
 				else if(commentLevel === 0){
-					parsed = parseEmailAddress(parts[0]);
+					let parsed = parseEmailAddress(parts[0]);
 					if(parsed && !parsed.unrecognizedDomain){	//it's a valid address
 						addresses.push(parsed.display ? parsed.full : parsed.simple);
 					}
@@ -490,26 +539,17 @@
 			return str.replace(/[^a-z0-9-._~!$'()*+,;:@]/ig, function (match){ return "%"+match.charCodeAt(0).toString(16).toUpperCase(); });
 		}
 		
-		uri = parseURI(uri);
-		if(!uri || uri.scheme !== "mailto" || uri.authority) return null;	//not a valid mailto URI
-		//note: if there is a fragment, it will simply be left out
+		parts.to = [];
+		parts.cc = [];
+		parts.bcc = [];
+		parts.subject = "";
+		parts.body = "";
+		parts.headers = [];	//other headers besides the above (each header is an object {name, value})
 		
-		parts = {
-			uri: "",
-			scheme: "mailto",
-			to: [],
-			cc: [],
-			bcc: [],
-			subject: "",
-			body: "",
-			headers: []	//other headers besides the above (each header is an object {name, value})
-		};
+		parts.to = parts.path ? splitEmailAddresses(decodeURIComponent(parts.path)) : [];
 		
-		if(uri.path) parts.to = splitEmailAddresses(decodeURIComponent(uri.path));
-		else parts.to = [];
-		
-		headers = parseQuery(uri.query);
-		for(i=0; i<headers.length; i++){
+		let headers = parseQuery(parts.query);
+		for(let i=0; i<headers.length; i++){
 			if(headers[i].value === "") continue;
 			
 			if(headers[i].name === "to") parts.to = parts.to.concat(splitEmailAddresses(headers[i].value));
@@ -524,6 +564,7 @@
 		
 		parts.uri = "mailto:" + encodePart(parts.to.join(","));
 		
+		let query = "";
 		if(parts.cc.length){
 			if(query) query += "&";
 			query += "cc=" + encodePart(parts.cc.join(","));
@@ -552,34 +593,33 @@
 		return parts;
 	};
 	
-	//normalizes a single email address (mailbox) and splits it into its parts
-	//returns an object:
-	//	.display	//display name
-	//	.local		//local part of the address
-	//	.domain		//domain part of the address
-	//	.unrecognizedDomain	//true if the domain is something other than a DNS domain, IPv4, IPv4 literal, or IPv6 literal
-	//	.simple		//local@domain
-	//	.full		//"display name" <local@domain>   if there is a display name
-	//				//local@domain   if there is not a display name
-	//	.stripped	//same address that was passed to the function, but unfolded and without any comments
-	//returns null if it's not a valid address
-	//unfolds whitespace and removes comments
-	//obsolete syntax is not supported
-	//see RFC 5322 http://tools.ietf.org/html/rfc5322
-	// and RFC 5321 http://tools.ietf.org/html/rfc5321#section-4.1.3
-	// and http://www.addedbytes.com/lab/email-address-validation
-	// and http://email.about.com/od/emailbehindthescenes/f/email_case_sens.htm
+	/**
+	 * Normalizes a single email address (mailbox) and splits it into its parts.
+	 * 
+	 * ParseURI.parseEmailAddress(address)
+	 * @param {string} address - email address or mailbox (e.g., "display name" <local@domain> )
+	 * @return {object} - Object containing the mailbox and its parts. Null if it's invalid.
+	 *   {string} .full - If there is a display name: "display name" <local@domain>
+	 *                    If there isn't: local@domain
+	 *   {string} .simple - local@domain
+	 *   {string} .display - display name
+	 *   {string} .local - Local part of the address.
+	 *   {string} .domain - Domain part of the address. This doesn't have to be a DNS domain or IP to be valid.
+	 *   {boolean} .unrecognizedDomain - True if the domain is something other than a DNS domain or IP, otherwise undefined.
+	 * 
+	 * Unfolds whitespace and removes comments.
+	 * Obsolete syntax is not supported.
+	 * See RFC 5322 http://tools.ietf.org/html/rfc5322
+	 *   and RFC 5321 http://tools.ietf.org/html/rfc5321#section-4.1.3
+	 *   and http://www.addedbytes.com/lab/email-address-validation
+	 *   and http://email.about.com/od/emailbehindthescenes/f/email_case_sens.htm
+	 */
 	function parseEmailAddress(address){
-		
-		var mailbox = address;
-		var rxpAtom, rxpDotAtom, rxpQuotedString, rxpDomainLiteral, nameAddr;
-		var m, ret, result = "", temp1, temp2;
-		var parts = {};
 		
 		//remove CFWS from beginning of str (actually just removes comments; surrounding whitespace is preserved)
 		function removeComments(str){
 			
-			var wsp = "", m, inQuote = false, commentLevel = 0;
+			let wsp = "", m, inQuote = false, commentLevel = 0;
 			
 			while(m = /^([\t ]*)\(/.exec(str)){
 				
@@ -600,7 +640,6 @@
 							str = str.slice(m.index+1);
 						}
 						else if(m[0] === "\\"){	//quoted pair
-							console.log(m[0] === "\\");
 							if(!str[m.index+1]){	//end of string; invalid quoted pair
 								return null;
 							}
@@ -649,24 +688,21 @@
 			
 		}
 		
+		let mailbox = address;
 		if(!mailbox) return null;
 		
 		mailbox = mailbox.replace(/\n([\t ])/g, "$1");	//unfold whitespace
 		
-		if((/[^\t a-z0-9!#$%&'*+-\/=?\^_`{|}~()<>\[\]:;@\\,."]/i).test(address)) return null;	//contains invalid characters
+		if((/[^a-z0-9!#$%&'*+-\/=?\^_`{|}~\t ()<>\[\]:;@,."\\]/i).test(address)) return null;	//contains invalid characters
 		
 		//remove comments from mailbox (comments can nest, so they have to be stripped manually)
 		
-		rxpAtom = /^[a-z0-9!#$%&'*+-\/=?\^_`{|}~]+/i;
-		rxpDotAtom = /^[a-z0-9!#$%&'*+-\/=?\^_`{|}~]+(?:\.[a-z0-9!#$%&'*+-\/=?\^_`{|}~]+)*/i;
-		rxpQuotedString = /^"(?:[\t a-z0-9!#$%&'*+-\/=?\^_`{|}~()<>\[\]:;@,.]*(?:\\[\t a-z0-9!#$%&'*+-\/=?\^_`{|}~()<>\[\]:;@\\,."])*)*"/i;
-		rxpDomainLiteral = /^\[[\t a-z0-9!#$%&'*+-\/=?\^_`{|}~()<>:;@,."]*\]/i;
-		
-		ret = removeComments(mailbox);
+		let ret = removeComments(mailbox);
 		if(!ret) return null;
-		result += ret[0];
+		let result = ret[0];
 		mailbox = ret[1];
 		
+		let nameAddr;
 		if(mailbox[0] === "<"){
 			nameAddr = true;	//angle brackets are used
 			ret = removeComments(mailbox.slice(1));
@@ -675,13 +711,32 @@
 			mailbox = ret[1];
 		}
 		
+		let rxp_atext = "a-z0-9!#$%&'*+-\\/=?\\^_`{|}~",
+			rxp_atom = "[" + rxp_atext + "]+",
+			rxp_dotAtom = rxp_atom + "(?:\\." + rxp_atom + ")*",
+			rxp_qtext = rxp_atext + "\\t ()<>\\[\\]:;@,.",
+			rxp_quotedPair = "\\\\[" + rxp_qtext + "\"\\\\]",
+			rxp_qcontent = "(?:[" + rxp_qtext + "]|" + rxp_quotedPair + ")",
+			rxp_dtext = rxp_atext + "\\t ()<>:;@,.\"",
+			rxp_domainLiteral = "\\[[" + rxp_dtext + "]*\\]",
+			
+			rxpAtomStart = new RegExp("^" + rxp_atom, "i"),
+			rxpDotAtomStart = new RegExp("^" + rxp_dotAtom, "i"),
+			rxpQuotedStringStart = new RegExp("^\"" + rxp_qcontent + "*", "i"),
+			rxpDomainLiteralStart = new RegExp("^" + rxp_domainLiteral, "i"),
+			
+			rxpDotAtom = new RegExp("^" + rxp_dotAtom + "$", "i"),
+			rxpDisplayName = new RegExp("^(?:" + rxp_atom + "|\"" + rxp_qcontent + "*\")+$", "i"),
+			
+			text, wsp;
+		
 		//get the first block of text
-		if(m = rxpDotAtom.exec(mailbox)){
-			temp1 = m[0];
+		if(let m = rxpDotAtomStart.exec(mailbox)){
+			text = m[0];
 			mailbox = mailbox.slice(m[0].length);
 		}
-		else if(m = rxpQuotedString.exec(mailbox)){
-			temp1 = m[0];
+		else if(let m = rxpQuotedStringStart.exec(mailbox)){
+			text = m[0];
 			mailbox = mailbox.slice(m[0].length);
 		}
 		else{
@@ -690,32 +745,38 @@
 		
 		ret = removeComments(mailbox);
 		if(!ret) return null;
-		temp2 = ret[0]
+		wsp = ret[0]
 		mailbox = ret[1];
 		
-		//temp1 = local-part text   OR   display-name text
-		//temp2 = WSP after temp1
 		
-		if(mailbox[0] === "<"){	//temp1 was the display name
+		//At this point:
+		//text = local-part text   OR   display-name text
+		//wsp = WSP after the text
+		
+		
+		let parts = {};
+			
+		if(mailbox[0] === "<"){	//`text` was the display name
 			if(nameAddr) return null;	//invalid mailbox; extra "<"
-			if(rxpDotAtom.test(temp1) && !rxpAtom.test(temp1)) return null;	//invalid display name
+			if(!rxpDisplayName.test(text)) return null;	//invalid display name
 			nameAddr = true;	//angle brackets are used
 			
 			//add the display name to the result
 			ret = removeComments(mailbox.slice(1));
 			if(!ret) return null;
-			result += temp1+temp2+"<"+ret[0];
+			result += text+wsp+"<"+ret[0];
 			mailbox = ret[1];
 			
-			parts.display = temp1;
+			parts.display = text;
 			
 			//get the local part
-			if(m = rxpAtom.exec(mailbox)){
-				temp1 = m[0];
+			let m;
+			if(m = rxpAtomStart.exec(mailbox)){
+				text = m[0];
 				mailbox = mailbox.slice(m[0].length);
 			}
-			else if(m = rxpQuotedString.exec(mailbox)){
-				temp1 = m[0];
+			else if(m = rxpQuotedStringStart.exec(mailbox)){
+				text = m[0];
 				mailbox = mailbox.slice(m[0].length);
 			}
 			else{
@@ -724,25 +785,30 @@
 			
 			ret = removeComments(mailbox);
 			if(!ret) return null;
-			temp2 = ret[0];
+			wsp = ret[0];
 			mailbox = ret[1];
 		}
 		else{
 			parts.display = "";
 		}
 		
-		//temp1 = local-part text
-		//temp2 = WSP after temp1
+		
+		//At this point:
+		//text = local-part text
+		//wsp = WSP after the text
+		
 		
 		//add the local part to the result
-		result += temp1+temp2;
+		result += text+wsp;
 		
-		parts.local = temp1;
+		parts.local = text;
 		
-		//at this point, `result` is one of these:
+		
+		//At this point, `result` is one of these:
 		//	local-part
 		//	"<" local-part
 		//	display-name "<" local-part
+		
 		
 		if(mailbox[0] !== "@") return null;	//invalid address
 		
@@ -753,13 +819,13 @@
 		mailbox = ret[1];
 		
 		//get the domain and add it to the result
-		if(m = rxpDotAtom.exec(mailbox)){
+		if(let m = rxpDotAtomStart.exec(mailbox)){
 			result += m[0];
 			mailbox = mailbox.slice(m[0].length);
 			
 			parts.domain = m[0];
 		}
-		else if(m = rxpDomainLiteral.exec(mailbox)){
+		else if(let m = rxpDomainLiteralStart.exec(mailbox)){
 			result += m[0];
 			mailbox = mailbox.slice(m[0].length);
 			
@@ -782,9 +848,10 @@
 			mailbox = ret[1];
 		}
 		
-		parts.stripped = result;
+		if(mailbox !== "") return null;	//invalid mailbox
 		
-		//at this point, `result` is one of these:
+		
+		//At this point, `result` is one of these:
 		//	local-part "@" domain
 		//	"<" local-part "@" domain ">"
 		//	display-name "<" local-part "@" domain ">"
@@ -793,29 +860,28 @@
 		//normalize the display name
 		parts.display = parts.display.replace(/\s+/, " ");	//replace blocks of whitespace with a single space
 		if(parts.display[0] === "\""){
-			parts.display = parts.display.slice(1,-1);	//remove the quotes
-			parts.display = parts.display.trim ? parts.display.trim() : parts.display.replace(/^\s+|\s+$/g, "");	//trim
+			parts.display = parts.display.slice(1,-1).trim();	//remove the outer quotes
 		}
 		
 		//normalize the local part
-		if(parts.local[0] === "\"" && /^[a-z0-9!#$%&'*+-\/=?\^_`{|}~]+(?:\.[a-z0-9!#$%&'*+-\/=?\^_`{|}~]+)*$/i.test(parts.local.slice(1,-1))){
+		if(parts.local[0] === "\"" && rxpDotAtom.test(parts.local.slice(1,-1))){
 			parts.local = parts.local.slice(1,-1);	//remove quotes if they aren't required
 		}
 		
 		//normalize the domain
 		if((/^\[IPv6:/i).test(parts.domain)){	//it's an IPv6 address literal
-			if(temp1 = normalizeIPv6(parts.domain.slice(6, -1))){
-				parts.domain = "[IPv6:"+temp1+"]";
+			if(text = normalizeIPv6(parts.domain.slice(6, -1))){
+				parts.domain = "[IPv6:"+text+"]";
 			}
 			else{
 				return null;	//invalid IPv6
 			}
 		}
-		else if(parts.domain[0] === "[" && (temp1 = normalizeIPv4(parts.domain.slice(1,-1)))){	//it's an IPv4 address literal
-			parts.domain = temp1;
+		else if(parts.domain[0] === "[" && (text = normalizeIPv4(parts.domain.slice(1,-1)))){	//it's an IPv4 address literal
+			parts.domain = text;
 		}
-		else if(parts.domain[0] !== "[" && (temp1 = normalizeDNSHost(parts.domain))){	//it's a domain or an IPv4 address
-			parts.domain = temp1;
+		else if(parts.domain[0] !== "[" && (text = normalizeDNSHost(parts.domain).host)){	//it's a domain or an IPv4 address
+			parts.domain = text;
 		}
 		else{
 			parts.unrecognizedDomain = true;
@@ -939,4 +1005,8 @@
 		return lnk.uri;	//fixed & normalized
 	};
 	
-}).call(this);
+	this.ParseURI = ParseURI;
+	this.ParseURI.parseEmailAddress = parseEmailAddress;
+	this.ParseURI.fixHyperlink = fixHyperlink;
+	
+}).call(window);
