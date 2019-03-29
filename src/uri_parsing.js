@@ -1,5 +1,5 @@
 /**
- * This script does not support IPvFuture literal address formats.
+ * This script does not support IPvFuture literal address formats, nor internationalized domain names (IDNs).
  * 
  * General references:
  *   RFC 3986 "Uniform Resource Identifier (URI): Generic Syntax"   http://tools.ietf.org/html/rfc3986
@@ -178,11 +178,8 @@
 		
 		if(!(/^(?:[a-z0-9-._~!$&'()*+,;=]|%[0-9A-F]{2})*$/i).test(host)) return null;	//contains invalid characters
 		
-		//decode letters & numbers
-		host = host.replace(/%(3\d|[46][1-9A-F]|[57][0-9A])/ig, function (match, p1){ return String.fromCharCode(parseInt(p1.toUpperCase(), 16)); });
-		
-		//decode allowed symbols: -._~!$&'()*+,;=
-		host = host.replace(/%(2[146-9A-E]|3[BD]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1.toUpperCase(), 16)); });
+		//decode percent encodings of valid characters
+		host = host.replace(/%(3\d|[46][1-9A-F]|[57][0-9A]|2[146-9A-E]|3[BD]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
 		
 		if( (ip = normalizeIPv4(host)) ) return ip;	//it's a valid IPv4 address
 		
@@ -196,8 +193,11 @@
 	
 	//converts an obscured host to a more readable one; only accepts IP addresses and DNS domain names as valid
 	//returns null if it's not valid
-	//see RFC 3986 http://tools.ietf.org/html/rfc3986
+	//this does not support internationalized domain names (IDNs) (RFC 3490)
+	//see RFC 3986 http://tools.ietf.org/html/rfc3986#section-3.2.2
 	// and RFC 2181 http://tools.ietf.org/html/rfc2181#section-11
+	// and RFC 1123 https://tools.ietf.org/html/rfc1123#page-13
+	// and RFC 3490 https://tools.ietf.org/html/rfc3490
 	function normalizeDNSHost(host){
 		
 		host = normalizeHost(host);
@@ -857,7 +857,7 @@
 	//****************************************************************
 	
 	//attempts to fix a URI (if needed) and normalizes it
-	// allowedSchemes	a string or array of strings listing accepted schemes; http, https, and mailto by default if none are specified
+	// allowedSchemes	a string or array of strings listing accepted schemes; if not specified, any scheme is allowed
 	// domain			host name (and optionally port) to use if an http/https URI is relative; current page's domain by default
 	//if the string does not have a scheme, it will be assumed that it's meant to be that of the current page (e.g., if str is a relative URL)
 	//returns null if it can't be fixed or if the allowedSchemes argument is invalid
@@ -865,11 +865,11 @@
 		
 		var scheme, lnk, m, i, j, tmp;
 		
-		if(!domain && domain !== 0) domain = window.location.host;
+		if(domain === void 0) domain = window.location.host;
 		
-		if(allowedSchemes && Object.prototype.toString.call(allowedSchemes) === "[object Array]" && allowedSchemes.length){	//allowedSchemes is an array with at least one element
+		if(allowedSchemes && allowedSchemes instanceof Array && allowedSchemes.length){	//allowedSchemes is an array with at least one element
 			for(i=0; i<allowedSchemes.length; i++){
-				if(typeof(allowedSchemes[i]) !== "string" || !(/^[a-z][a-z0-9+.-]*$/i).test(allowedSchemes[i])){	//invalid scheme
+				if(!(/^[a-z][a-z0-9+.-]*$/i).test(allowedSchemes[i])){	//invalid scheme
 					allowedSchemes.splice(i,1);	//remove it from the array
 				}
 			}
@@ -877,45 +877,32 @@
 				return null;	//no valid schemes
 			}
 		}
-		else if(typeof(allowedSchemes) === "string"){	//allowedSchemes is a string
+		else if(allowedSchemes){	//allowedSchemes is a single scheme
 			if(!(/^[a-z][a-z0-9+.-]*$/i).test(allowedSchemes)) return null;	//invalid scheme
 			allowedSchemes = [allowedSchemes];	//use it as the only allowed scheme
-		}
-		else{
-			if(!allowedSchemes || !allowedSchemes.length){	//allowed schemes not specified
-				allowedSchemes = ["http", "https", "mailto"];	//use default
-			}
-			else{
-				return null;	//allowedSchemes is not valid
-			}
 		}
 		
 		//get scheme
 		scheme = (/^([a-z][a-z0-9+.-]*):/i).exec(str);
-		scheme = scheme ? scheme[1].toLowerCase() : window.location.protocol.slice(0,-1);	//if the string does not include a valid scheme, assume it's meant to be that of the current page
-		for(i=0; i<allowedSchemes.length; i++){
-			if(scheme === allowedSchemes[i]) break;
+		if(scheme){
+			scheme = scheme[1].toLowerCase();
+			str = str.slice(scheme.length+1);
 		}
-		if(!allowedSchemes[i]){	//scheme is not allowed
-			//the previous regexp match may have been a DNS host
-			if(scheme !== "http" && scheme !== "https" && (/^(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\1(?:\.(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\2)*:/i).test(str)){
-				scheme = window.location.protocol.slice(0,-1);	//assume the scheme is meant to be that of the current page
-				for(i=0; i<allowedSchemes.length; i++){
-					if(scheme === allowedSchemes[i]) break;
-				}
-				if(!allowedSchemes[i]){	//scheme is not allowed
-					return null;
-				}
+		else{	//the string does not include a valid scheme
+			scheme = window.location.protocol.slice(0,-1);	//assume it's meant to be that of the current page
+		}
+		if(allowedSchemes){
+			for(i=0; i<allowedSchemes.length; i++){
+				if(scheme === allowedSchemes[i]) break;
 			}
-			else{
-				return null;	//scheme is not allowed
+			if(!allowedSchemes[i]){	//scheme is not allowed
+				return null;
 			}
 		}
 		
 		//percent-encode illegal characters
-		str = str.replace(/([^a-z0-9-._~!$&'()*+,;=:@\/\[\]%?#])|%(?![0-9A-F]{2})/ig, function (match, p1){
-				if(p1) return "%"+p1.charCodeAt(0).toString(16);
-				else return "%25";	//percent sign
+		str = str.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@\/\[\]%?#]|%(?![0-9A-F]{2}))+/ig, function (match){
+				return encodeURIComponent(match);
 			});
 		i = str.search(/\?/);	//index of first question mark
 		j = str.search(/#/);	//index of first number sign
@@ -930,10 +917,14 @@
 			}
 		}
 		
+//TODO
 		//fix & normalize
 		if(scheme === "http" || scheme === "https"){
 			if(!(new RegExp("^"+scheme+"://", "i")).test(str)){
-				if(str[0] === "/"){ 	//path (relative to root)
+				if(str.substring(0,2) === "//"){ 	//relative to the scheme
+					lnk = parseHttp(scheme+"://"+domain+str.replace(/\[/g, "%5B").replace(/\]/g, "%5D"));
+				}
+				else if(str[0] === "/"){ 	//path (relative to root)
 					lnk = parseHttp(scheme+"://"+domain+str.replace(/\[/g, "%5B").replace(/\]/g, "%5D"));
 				}
 				else{
