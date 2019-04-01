@@ -142,7 +142,7 @@
 			return parseMailto({
 					uri: uri,
 					scheme: scheme,
-					to: path,
+					path: path,
 					query: query
 				});
 			
