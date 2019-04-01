@@ -100,9 +100,8 @@
 		
 		uri = scheme+":" + (authority !== (void 0) ? "//"+authority : "") + path + (query ? "?"+query : "") + (fragment ? "#"+fragment : "");
 		
-		let queryObj = {};
-		defineProperty(queryObj, "toString", function (){ return query; }, true, false, true);
-		queryObj.pairs = parseQuery(query);
+		let queryObj = parseQuery(query);
+		query = queryObj.toString();
 		
 		if((/^https?$/).test(scheme)){	//it's a URL (http or https)
 			
@@ -138,12 +137,12 @@
 		}
 		else if(scheme === "mailto"){
 			
-			if(authority) return null;
+			if(authority || fragment) return null;
 			
 			return parseMailto({
 					uri: uri,
 					scheme: scheme,
-					path: path,
+					to: path,
 					query: query
 				});
 			
@@ -179,7 +178,7 @@
 		if(!(/^(?:[a-z0-9-._~!$&'()*+,;=]|%[0-9A-F]{2})*$/i).test(host)) return null;	//contains invalid characters
 		
 		//decode percent encodings of valid characters
-		host = host.replace(/%(3\d|[46][1-9A-F]|[57][0-9A]|2[146-9A-E]|3[BD]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
+		host = host.replace(/%(2[146-9A-E]|3\d|3[BD]|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
 		
 		if( (ip = normalizeIPv4(host)) ) return ip;	//it's a valid IPv4 address
 		
@@ -369,8 +368,9 @@
 		
 		//replace longest run of multiple zeros with "::" shortcut
 		let longest = "",
-			rxp = /(?:^|:)((0:)+0)/g;
-		while(let m = rxp.exec(ip)){
+			rxp = /(?:^|:)((0:)+0)/g,
+			m;
+		while(m = rxp.exec(ip)){
 			if(m[1].length > longest.length) longest = m[1];
 		}
 		if(longest){
@@ -407,14 +407,22 @@
 		if(!queryString) return [];
 		
 		let pairs = queryString.split("&"),
-			results = [];
+			results = [],
+			queryObj = {};
 		for(let i=0; i<pairs.length; i++){
 			let pair = pairs[i].split("=");
-			if(pair.length === 1 || pair[0] === "") continue;	//there is no "=" or no name; skip it
+			if(pair.length === 1 || pair[0] === ""){	//there is no "=" or no name; skip it
+				pairs.splice(i--,1);
+				continue;
+			}
 			results.push( { name: decodeURIComponent(pair.shift()), value: decodeURIComponent(pair.join("=")) } );	//add the name/value pair to the results
 		}
+		queryString = pairs.join("&");
 		
-		return results;
+		queryObj.pairs = results;
+		defineProperty(queryObj, "toString", function (){ return queryString; }, true, false, true);
+		
+		return queryObj;
 		
 	};
 	
@@ -437,6 +445,10 @@
 	//see RFC 6068 http://tools.ietf.org/html/rfc6068
 	function parseMailto(parts){
 		
+		if(!/^(?:[a-z0-9-._~!$'()*+,:@]|%[0-9A-F]{2})*$/i.test(parts.path) || !/^(?:[a-z0-9-._~!$'()*+,;:@]|%[0-9A-F]{2})*$/i.test(parts.query)){
+			rturn null;	//contains invalid characters
+		}
+		
 		//splits the string at the commas (ignoring commas within quoted strings or comments)
 		//only returns valid email addresses
 		function splitEmailAddresses(str){
@@ -448,10 +460,13 @@
 			
 			while(parts.length){
 				
-				let rxp = /(?:^|[^\\()"])(?:\\\\)*([()"])/g;
+				//decode percent-encoded characters
+				parts[0] = decodeURIComponent(parts[0]);
 				
 				//determine if inside a comment or a quoted string
-				while(let c = rxp.exec(parts[0])){
+				let rxp = /(?:^|[^\\()"])(?:\\\\)*([()"])/g,
+					c;
+				while(c = rxp.exec(parts[0])){
 					if(!inQuote){
 						if(c[1] === "(") commentLevel++;
 						else if(c[1] === ")") commentLevel--;
@@ -489,7 +504,7 @@
 		}
 		
 		function encodePart(str){
-			return str.replace(/[^a-z0-9-._~!$'()*+,;:@]/ig, function (match){ return "%"+match.charCodeAt(0).toString(16).toUpperCase(); });
+			return encodeURI(str).replace(/[\/?&=#]/g function (match){ return "%"+match.charCodeAt(0).toString(16).toUpperCase(); });
 		}
 		
 		parts.to = [];
@@ -499,18 +514,27 @@
 		parts.body = "";
 		parts.headers = [];	//other headers besides the above (each header is an object {name, value})
 		
-		parts.to = parts.path ? splitEmailAddresses(decodeURIComponent(parts.path)) : [];
+		parts.to = parts.path ? splitEmailAddresses(parts.path) : [];
 		
 		let headers = parseQuery(parts.query);
 		for(let i=0; i<headers.length; i++){
 			if(headers[i].value === "") continue;
 			
-			if(headers[i].name === "to") parts.to = parts.to.concat(splitEmailAddresses(headers[i].value));
-			else if(headers[i].name === "cc") parts.cc = parts.cc.concat(splitEmailAddresses(headers[i].value));
-			else if(headers[i].name === "bcc") parts.bcc = parts.bcc.concat(splitEmailAddresses(headers[i].value));
-			else if(headers[i].name === "subject") parts.subject = headers[i].value;
-			else if(headers[i].name === "body") parts.body = headers[i].value;
-			else parts.headers.push(headers[i]);
+			headers[i].name = decodeURIComponent(headers[i].name);
+			if(headers[i].name === "to")
+				parts.to = parts.to.concat(splitEmailAddresses(headers[i].value));
+			else if(headers[i].name === "cc")
+				parts.cc = parts.cc.concat(splitEmailAddresses(headers[i].value));
+			else if(headers[i].name === "bcc")
+				parts.bcc = parts.bcc.concat(splitEmailAddresses(headers[i].value));
+			else if(headers[i].name === "subject")
+				parts.subject = decodeURIComponent(headers[i].value);
+			else if(headers[i].name === "body")
+				parts.body = decodeURIComponent(headers[i].value);
+			else{
+				headers[i].value = decodeURIComponent(headers[i].value);
+				parts.headers.push(headers[i]);
+			}
 		}
 		
 		if(parts.to.length + parts.cc.length + parts.bcc.length === 0) return null;	//no destination
@@ -519,7 +543,6 @@
 		
 		let query = "";
 		if(parts.cc.length){
-			if(query) query += "&";
 			query += "cc=" + encodePart(parts.cc.join(","));
 		}
 		if(parts.bcc.length){
@@ -568,6 +591,8 @@
 	 *   and http://email.about.com/od/emailbehindthescenes/f/email_case_sens.htm
 	 */
 	function parseEmailAddress(address){
+		
+		let m;
 		
 		//remove CFWS from beginning of str (actually just removes comments; surrounding whitespace is preserved)
 		function removeComments(str){
@@ -684,11 +709,11 @@
 			text, wsp;
 		
 		//get the first block of text
-		if(let m = rxpDotAtomStart.exec(mailbox)){
+		if(m = rxpDotAtomStart.exec(mailbox)){
 			text = m[0];
 			mailbox = mailbox.slice(m[0].length);
 		}
-		else if(let m = rxpQuotedStringStart.exec(mailbox)){
+		else if(m = rxpQuotedStringStart.exec(mailbox)){
 			text = m[0];
 			mailbox = mailbox.slice(m[0].length);
 		}
@@ -723,7 +748,6 @@
 			parts.display = text;
 			
 			//get the local part
-			let m;
 			if(m = rxpAtomStart.exec(mailbox)){
 				text = m[0];
 				mailbox = mailbox.slice(m[0].length);
@@ -772,13 +796,13 @@
 		mailbox = ret[1];
 		
 		//get the domain and add it to the result
-		if(let m = rxpDotAtomStart.exec(mailbox)){
+		if(m = rxpDotAtomStart.exec(mailbox)){
 			result += m[0];
 			mailbox = mailbox.slice(m[0].length);
 			
 			parts.domain = m[0];
 		}
-		else if(let m = rxpDomainLiteralStart.exec(mailbox)){
+		else if(m = rxpDomainLiteralStart.exec(mailbox)){
 			result += m[0];
 			mailbox = mailbox.slice(m[0].length);
 			
@@ -858,17 +882,25 @@
 	
 	//attempts to fix a URI (if needed) and normalizes it
 	// allowedSchemes	a string or array of strings listing accepted schemes; if not specified, any scheme is allowed
-	// domain			host name (and optionally port) to use if an http/https URI is relative; current page's domain by default
+	// domain			host name (and optionally port) to use if an http/https URI is relative; current page's domain and port by default
 	//if the string does not have a scheme, it will be assumed that it's meant to be that of the current page (e.g., if str is a relative URL)
-	//returns null if it can't be fixed or if the allowedSchemes argument is invalid
+	//returns null if it can't be fixed
 	function fixHyperlink(str, allowedSchemes, domain){
 		
-		var scheme, lnk, m, i, j, tmp;
+		let port = "";
 		
-		if(domain === void 0) domain = window.location.host;
+		if(domain === void 0 && window && window.location && window.location.host){
+			domain = window.location.host;
+		}
+		else{
+			domain = normalizeDNSHost(domain.replace(/^([^:]*)((?::\d+)?)$/, function (match, p1, p2){
+				port = p2;
+				return p1;
+			}));
+		}
 		
-		if(allowedSchemes && allowedSchemes instanceof Array && allowedSchemes.length){	//allowedSchemes is an array with at least one element
-			for(i=0; i<allowedSchemes.length; i++){
+		if(allowedSchemes && allowedSchemes instanceof Array){	//allowedSchemes is an array
+			for(let i=0; i<allowedSchemes.length; i++){
 				if(!(/^[a-z][a-z0-9+.-]*$/i).test(allowedSchemes[i])){	//invalid scheme
 					allowedSchemes.splice(i,1);	//remove it from the array
 				}
@@ -883,63 +915,71 @@
 		}
 		
 		//get scheme
-		scheme = (/^([a-z][a-z0-9+.-]*):/i).exec(str);
+		let scheme = (/^([a-z][a-z0-9+.-]*):/i).exec(str);
 		if(scheme){
 			scheme = scheme[1].toLowerCase();
 			str = str.slice(scheme.length+1);
 		}
 		else{	//the string does not include a valid scheme
-			scheme = window.location.protocol.slice(0,-1);	//assume it's meant to be that of the current page
+			if(window && window.location && window.location.protocol){
+				scheme = window.location.protocol.slice(0,-1);	//assume it's meant to be that of the current page
+			}
+			else{
+				return null;	//unknown scheme
+			}
 		}
-		if(allowedSchemes){
-			for(i=0; i<allowedSchemes.length; i++){
-				if(scheme === allowedSchemes[i]) break;
-			}
-			if(!allowedSchemes[i]){	//scheme is not allowed
-				return null;
-			}
+		if(allowedSchemes && allowedSchemes.indexOf(scheme) < 0){	//scheme is not allowed
+			return null;
 		}
 		
 		//percent-encode illegal characters
 		str = str.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@\/\[\]%?#]|%(?![0-9A-F]{2}))+/ig, function (match){
 				return encodeURIComponent(match);
 			});
-		i = str.search(/\?/);	//index of first question mark
-		j = str.search(/#/);	//index of first number sign
+		let i = str.search(/\?/);	//index of first question mark
+		let j = str.search(/#/);	//index of first number sign
 		if(j >= 0 && j < i){	//no query; only a fragment
 			str = str.slice(0,j+1) + str.slice(j+1).replace(/#/g, "%23");	//percent-encode illegal number signs
 		}
 		else if(i >= 0){	//query
-			tmp = j >= 0 ? str.slice(j) : "";
+			let tmp = j >= 0 ? str.slice(j) : "";
 			str = str.slice(0,i+1) + str.slice(i+1,j).replace(/\?/g, "%3F");	//percent-encode illegal question marks
 			if(tmp){	//fragment
 				str = str + "#" + tmp.slice(1).replace(/#/g, "%23");	//percent-encode illegal number signs
 			}
 		}
 		
-//TODO
 		//fix & normalize
+		let lnk;
 		if(scheme === "http" || scheme === "https"){
 			if(!(new RegExp("^"+scheme+"://", "i")).test(str)){
+				str = str.replace(/\[/g, "%5B").replace(/\]/g, "%5D");
 				if(str.substring(0,2) === "//"){ 	//relative to the scheme
-					lnk = parseHttp(scheme+"://"+domain+str.replace(/\[/g, "%5B").replace(/\]/g, "%5D"));
+					lnk = parseHttp(scheme+"://"+str);
 				}
-				else if(str[0] === "/"){ 	//path (relative to root)
-					lnk = parseHttp(scheme+"://"+domain+str.replace(/\[/g, "%5B").replace(/\]/g, "%5D"));
+				else if(str[0] === "/" && domain){ 	//path (relative to root)
+					lnk = parseHttp(scheme+"://"+domain+port+str);
+				}
+				else if(domain){
+					lnk = parseHttp(scheme+"://"+domain+port+"/"+str);
 				}
 				else{
-					lnk = parseHttp(scheme+"://"+domain+"/"+str.replace(/\[/g, "%5B").replace(/\]/g, "%5D"));
+					return null;	//invalid domain
 				}
 			}
 			else{
 				lnk = parseHttp(str);
 				if(!lnk){
 					lnk = parseHttp(str.replace(/\[/g, "%5B").replace(/\]/g, "%5D"));
+					str = str.substring(scheme.length+3).replace(/^([^/]*)(?:$|(\/.*))/, function (match, p1, p2){
+						return p1 + p2.replace(/\[/g, "%5B").replace(/\]/g, "%5D");
+					});
+					lnk = parseHttp(scheme+"://"+str);
 				}
 			}
 		}
 		else if(scheme === "mailto"){
-			lnk = parseMailto(str.replace(/^mailto:\/\//i, "mailto:%2F%2F").replace(/\[/g,"%5B").replace(/\]/g,"%5D"));
+			lnk = parseMailto(str.replace(/\//g, "%2F"));
 		}
 		else{
 			lnk = parseURI(str.replace(/\[/g,"%5B").replace(/\]/g,"%5D"));
@@ -950,7 +990,8 @@
 	};
 	
 	this.ParseURI = ParseURI;
-	this.ParseURI.parseEmailAddress = parseEmailAddress;
 	this.ParseURI.fixHyperlink = fixHyperlink;
+	this.ParseURI.domain = normalizeDNSHost;
+	this.ParseURI.emailAddress = parseEmailAddress;
 	
-}).call(window);
+}).call(this);
