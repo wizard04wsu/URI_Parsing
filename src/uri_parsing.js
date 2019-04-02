@@ -105,6 +105,7 @@
 		
 		if((/^https?$/).test(scheme)){	//it's a URL (http or https)
 			
+			if(!host) return null;
 			host = normalizeDNSHost(host);
 			if(!host) return null;
 			
@@ -446,7 +447,7 @@
 	function parseMailto(parts){
 		
 		if(!/^(?:[a-z0-9-._~!$'()*+,:@]|%[0-9A-F]{2})*$/i.test(parts.path) || !/^(?:[a-z0-9-._~!$'()*+,;:@]|%[0-9A-F]{2})*$/i.test(parts.query)){
-			rturn null;	//contains invalid characters
+			return null;	//contains invalid characters
 		}
 		
 		//splits the string at the commas (ignoring commas within quoted strings or comments)
@@ -486,7 +487,7 @@
 					}
 					//else there are no more parts; still inside a comment or quoted string; invalid address
 				}
-				else if(commentLevel === 0){
+				else{
 					let parsed = parseEmailAddress(parts[0]);
 					if(parsed && !parsed.unrecognizedDomain){	//it's a valid address
 						addresses.push(parsed.display ? parsed.full : parsed.simple);
@@ -504,7 +505,7 @@
 		}
 		
 		function encodePart(str){
-			return encodeURI(str).replace(/[\/?&=#]/g function (match){ return "%"+match.charCodeAt(0).toString(16).toUpperCase(); });
+			return encodeURI(str).replace(/[\/?&=#]/g, function (match){ return "%"+match.charCodeAt(0).toString(16).toUpperCase(); });
 		}
 		
 		parts.to = [];
@@ -587,6 +588,8 @@
 	 * Obsolete syntax is not supported.
 	 * See RFC 5322 http://tools.ietf.org/html/rfc5322
 	 *   and RFC 5321 http://tools.ietf.org/html/rfc5321#section-4.1.3
+	 *   and RFC 6532 https://tools.ietf.org/html/rfc6532#section-3.2
+	 *   and RFC 6854 https://tools.ietf.org/html/rfc6854
 	 *   and http://www.addedbytes.com/lab/email-address-validation
 	 *   and http://email.about.com/od/emailbehindthescenes/f/email_case_sens.htm
 	 */
@@ -594,49 +597,32 @@
 		
 		let m;
 		
-		//remove CFWS from beginning of str (actually just removes comments; surrounding whitespace is preserved)
-		function removeComments(str){
+		let mailbox = address;
+		if(!mailbox) return null;
+		
+		if(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(mailbox)) return null;	//invalid characters
+		if(/\n[\t ]*(\r?\n|$)|\n[^\t ]/.test(mailbox)) return null;	//invalid FWS
+		
+		//removes comments & newlines from CFWS at beginning of str
+		//returns an array with the leading whitespace and the remaining text
+		function stripCFWS(str){
 			
-			let wsp = "", m, inQuote = false, commentLevel = 0;
+			let wsp = "", m, commentLevel = 0;
 			
-			while(m = /^([\t ]*)\(/.exec(str)){
+			while(m = /^([\t ]*(?:\r?\n[\t ]+)?)\(/.exec(str)){
 				
-				//save the whitespace
-				if(m[1]){
-					
-					wsp += m[1];
-					str = str.slice(m[1].length);
-					
-				}
+				wsp += m[1].replace(/\r?\n/g, "");	//save unfolded whitespace
+				str = str.slice(m[1].length);
 				
 				//remove comment
-				while(m = /[()"\\]/.exec(str)){
+				while(m = /[()\\]/.exec(str)){
 					
-					if(inQuote){	//inside a quoted string
-						if(m[0] === "\""){	//end of quoted string
-							inQuote = false;
-							str = str.slice(m.index+1);
-						}
-						else if(m[0] === "\\"){	//quoted pair
-							if(!str[m.index+1]){	//end of string; invalid quoted pair
-								return null;
-							}
-							str = str.slice(m.index+2);
-						}
-						else{
-							str = str.slice(m.index+1);
-						}
-					}
-					else if(m[0] === "("){	//beginning of comment
+					if(m[0] === "("){	//beginning of comment
 						commentLevel++;
 						str = str.slice(m.index+1);
 					}
 					else if(m[0] === ")"){	//end of comment
 						commentLevel--;
-						str = str.slice(m.index+1);
-					}
-					else if(m[0] === "\""){	//beginning of quoted string
-						inQuote = true;
 						str = str.slice(m.index+1);
 					}
 					else{	//quoted pair
@@ -652,59 +638,67 @@
 					
 				}
 				
-				if(inQuote || commentLevel){	//no closing quote or parenthesis
+				if(commentLevel){	//no closing parenthesis
 					return null;
 				}
 				
 			}
 			
-			m = /^[\t ]*/.exec(str);
-			wsp += m[0];
+			m = /^[\t ]*(?:\r?\n[\t ]+)?/.exec(str);
+			wsp += m[0].replace(/\r?\n/g, "");	//save unfolded whitespace
 			str = str.slice(m[0].length);
 			
 			return [wsp, str];
 			
 		}
 		
-		let mailbox = address;
-		if(!mailbox) return null;
+		//removes newlines from FWS at beginning of str
+		//returns an array with the leading whitespace and the remaining text
+		function stripFWS(str){
+			let m = /^[\t ]*(?:\r?\n[\t ]+)?/.exec(str);
+			return [ m[0].replace(/\r?\n/, ""), str.slice(m[0].length) ];
+		}
 		
-		mailbox = mailbox.replace(/\n([\t ])/g, "$1");	//unfold whitespace
-		
-		if((/[^a-z0-9!#$%&'*+-\/=?\^_`{|}~\t ()<>\[\]:;@,."\\]/i).test(address)) return null;	//contains invalid characters
-		
-		//remove comments from mailbox (comments can nest, so they have to be stripped manually)
-		
-		let ret = removeComments(mailbox);
+		let ret = stripCFWS(mailbox);
 		if(!ret) return null;
-		let result = ret[0];
-		mailbox = ret[1];
+		let result = ret[0];	//leading whitespace
+		mailbox = ret[1];	//remainder
 		
 		let nameAddr;
 		if(mailbox[0] === "<"){
 			nameAddr = true;	//angle brackets are used
-			ret = removeComments(mailbox.slice(1));
+			ret = stripCFWS(mailbox.slice(1));
 			if(!ret) return null;
 			result += "<"+ret[0];
 			mailbox = ret[1];
 		}
 		
-		let rxp_atext = "a-z0-9!#$%&'*+-\\/=?\\^_`{|}~",
-			rxp_atom = "[" + rxp_atext + "]+",
-			rxp_dotAtom = rxp_atom + "(?:\\." + rxp_atom + ")*",
-			rxp_qtext = rxp_atext + "\\t ()<>\\[\\]:;@,.",
-			rxp_quotedPair = "\\\\[" + rxp_qtext + "\"\\\\]",
-			rxp_qcontent = "(?:[" + rxp_qtext + "]|" + rxp_quotedPair + ")",
-			rxp_dtext = rxp_atext + "\\t ()<>:;@,.\"",
-			rxp_domainLiteral = "\\[[" + rxp_dtext + "]*\\]",
+		/*** parse mailbox ***/
+		
+		let rxp_fws = "(?:[\\t ]*\r?\n)?[\t ]+)",
+			rxp_atext = "[^\\r\\n\\t \"(),.:;<>@\\[\\\\\\]]",
+			rxp_qtext = "[^\\r\\n\\t \"\\\\]",
+			rxp_quotedPair = "\\\\[^\\r\\n]",
+			rxp_qcontent = "(?:"+rxp_qtext+"|"+rxp_quotedPair+")",
 			
-			rxpAtomStart = new RegExp("^" + rxp_atom, "i"),
-			rxpDotAtomStart = new RegExp("^" + rxp_dotAtom, "i"),
-			rxpQuotedStringStart = new RegExp("^\"" + rxp_qcontent + "*", "i"),
-			rxpDomainLiteralStart = new RegExp("^" + rxp_domainLiteral, "i"),
+			//these may be surrounded by CFWS
+			rxpAtom = "(?:"+rxp_atext+"+)",
+			rxpDotAtom = "(?:"+rxp_atext+"+(?:\\."+rxp_atext+"+)*)",
+			rxpQuotedString = "(?:\"(?:"+rxp_fws+"?"+rxp_qcontent+")*"+rxp_fws+"?\"",
 			
-			rxpDotAtom = new RegExp("^" + rxp_dotAtom + "$", "i"),
-			rxpDisplayName = new RegExp("^(?:" + rxp_atom + "|\"" + rxp_qcontent + "*\")+$", "i"),
+			//local-part = dot-atom / quoted-string
+			//domain = dot-atom / domain-literal
+			//addr-spec = local-part "@" domain
+			//display-name = 1*( atom / quoted-string )
+			//name-addr = [display-name] [CFWS] "<" addr-spec ">" [CFWS]
+			//mailbox = name-addr / addr-spec
+			//TODO: group, group-list, ..., address
+			
+			rxpAtomStart = new RegExp("^" + rxp_atext + "+", "i"),
+			rxpDotAtomStart = new RegExp("^" + rxpDotAtom, "i"),
+			rxpQuotedContentStart = new RegExp("^" + rxp_qcontent + "*", "i"),
+			
+			rxpDisplayName = new RegExp("^(?:[\\t ]*" + rxp_atext + "+[\\t ]*|\"(?:[\\t ]*" + rxp_qcontent + ")*[\\t ]*\")+$", "i"),
 			
 			text, wsp;
 		
@@ -713,15 +707,31 @@
 			text = m[0];
 			mailbox = mailbox.slice(m[0].length);
 		}
-		else if(m = rxpQuotedStringStart.exec(mailbox)){
-			text = m[0];
-			mailbox = mailbox.slice(m[0].length);
+		else if(mailbox[0] === "\""){
+			ret = stripFWS(mailbox.slice(1));
+			text = "\"" + ret[0];
+			mailbox = ret[1];
+			while(mailbox && mailbox[0] !== "\""){
+				if(m = rxpQuotedContentStart.exec(mailbox)){
+					text += m[0];
+					mailbox = mailbox.slice(m[0].length);
+					ret = stripFWS(mailbox);
+					text += ret[0];
+					mailbox = ret[1];
+				}
+				else{
+					return null;
+				}
+			}
+			if(mailbox[0] !== "\"") return null;
+			text += "\"";
+			mailbox = mailbox.slice(1);
 		}
 		else{
-			return null;	//invalid mailbox
+			return null;
 		}
 		
-		ret = removeComments(mailbox);
+		ret = stripCFWS(mailbox);
 		if(!ret) return null;
 		wsp = ret[0]
 		mailbox = ret[1];
@@ -740,7 +750,7 @@
 			nameAddr = true;	//angle brackets are used
 			
 			//add the display name to the result
-			ret = removeComments(mailbox.slice(1));
+			ret = stripCFWS(mailbox.slice(1));
 			if(!ret) return null;
 			result += text+wsp+"<"+ret[0];
 			mailbox = ret[1];
@@ -752,7 +762,7 @@
 				text = m[0];
 				mailbox = mailbox.slice(m[0].length);
 			}
-			else if(m = rxpQuotedStringStart.exec(mailbox)){
+			else if(m = rxpQuotedContentStart.exec(mailbox)){
 				text = m[0];
 				mailbox = mailbox.slice(m[0].length);
 			}
@@ -760,7 +770,7 @@
 				return null;	//invalid mailbox
 			}
 			
-			ret = removeComments(mailbox);
+			ret = stripCFWS(mailbox);
 			if(!ret) return null;
 			wsp = ret[0];
 			mailbox = ret[1];
@@ -790,7 +800,7 @@
 		if(mailbox[0] !== "@") return null;	//invalid address
 		
 		//add "@" to the result
-		ret = removeComments(mailbox.slice(1));
+		ret = stripCFWS(mailbox.slice(1));
 		if(!ret) return null;
 		result += "@"+ret[0];
 		mailbox = ret[1];
@@ -812,14 +822,14 @@
 			return null;	//invalid domain
 		}
 		
-		ret = removeComments(mailbox);
+		ret = stripCFWS(mailbox);
 		if(!ret) return null;
 		result += ret[0];
 		mailbox = ret[1];
 		
 		if(nameAddr){	//angle brackets are used
 			if(mailbox[0] !== ">") return null;	//invalid mailbox
-			ret = removeComments(mailbox.slice(1));
+			ret = stripCFWS(mailbox.slice(1));
 			if(!ret) return null;
 			result += ">"+ret[0];
 			mailbox = ret[1];
@@ -841,7 +851,7 @@
 		}
 		
 		//normalize the local part
-		if(parts.local[0] === "\"" && rxpDotAtom.test(parts.local.slice(1,-1))){
+		if(parts.local[0] === "\"" && (new RegExp("^"+rxpDotAtom+"$", "i")).test(parts.local.slice(1,-1))){
 			parts.local = parts.local.slice(1,-1);	//remove quotes if they aren't required
 		}
 		

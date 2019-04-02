@@ -1,5 +1,5 @@
 <html><head><title>URI_Parsing test</title><script src="../src/uri_parsing.js"></script><script>
-	let a = console.assert;
+/*	let a = console.assert;
 	let p = ParseURI("http://foo.bar/baz/bop.htm?a=1&b=&c#lorem");
 	a(p.uri === "http://foo.bar/baz/bop.htm?a=1&b=#lorem", p);
 	p = ParseURI("foo:bar");
@@ -14,4 +14,29 @@
 	a(p.uri === "mailto:/foo@bar", p);
 	p = ParseURI("mailto://foo@bar");
 	a(p === null, p);
+*/	
+	let test = [
+		["http://foo", "http://foo/"],
+		["mailto:foo@bar", "mailto:foo@bar"],
+		["foo:bar", "foo:bar"],
+		["foo:/bar", "foo:/bar"],
+		["foo://bar", "foo://bar"],
+		
+		["http://foo.bar/baz/bop.htm?a=1&b=&c#lorem", "http://foo.bar/baz/bop.htm?a=1&b=#lorem"],
+		["mailto:%22foo%22@bar", "mailto:%22foo%22@bar"],
+		
+		["http:/foo", null],
+		["http:foo", null]
+	]
+	console.group("URI assertions");
+	for(let i=0, result; i<test.length; i++){
+		result = ParseURI(test[i][0]);
+		if(test[i][1] === null){
+			console.assert(result === null, (i+1)+". "+test[i][0]+" --> "+(result && result.uri));
+		}
+		else{
+			console.assert(result && result.uri === test[i][1], (i+1)+". "+test[i][0]+" --> "+(result ? result.uri : "null"));
+		}
+	}
+	console.groupEnd();
 </script></head><body></body></html>
