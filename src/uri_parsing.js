@@ -595,17 +595,18 @@
 	 */
 	function parseEmailAddress(address){
 		
-		let m;
+		if(!address) return null;
 		
+		//renaming the variable to avoid confusion with the specs (this function does not parse groups)
 		let mailbox = address;
-		if(!mailbox) return null;
+		address = void 0;
 		
 		if(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(mailbox)) return null;	//invalid characters
 		if(/\n[\t ]*(\r?\n|$)|\n[^\t ]/.test(mailbox)) return null;	//invalid FWS
 		
 		//removes comments & newlines from CFWS at beginning of str
 		//returns an array with the leading whitespace and the remaining text
-		function stripCFWS(str){
+		function trimCFWS(str){
 			
 			let wsp = "", m, commentLevel = 0;
 			
@@ -652,30 +653,14 @@
 			
 		}
 		
-		//removes newlines from FWS at beginning of str
-		//returns an array with the leading whitespace and the remaining text
+		//removes newlines from FWS in str
+		//returns a string with the remaining whitespace and text
 		function stripFWS(str){
-			let m = /^[\t ]*(?:\r?\n[\t ]+)?/.exec(str);
-			return [ m[0].replace(/\r?\n/, ""), str.slice(m[0].length) ];
+			return str.replace(/\r?\n([\t ]+)/g, "$1");
 		}
 		
-		let ret = stripCFWS(mailbox);
-		if(!ret) return null;
-		let result = ret[0];	//leading whitespace
-		mailbox = ret[1];	//remainder
-		
-		let nameAddr;
-		if(mailbox[0] === "<"){
-			nameAddr = true;	//angle brackets are used
-			ret = stripCFWS(mailbox.slice(1));
-			if(!ret) return null;
-			result += "<"+ret[0];
-			mailbox = ret[1];
-		}
-		
-		/*** parse mailbox ***/
-		
-		let rxp_fws = "(?:[\\t ]*\r?\n)?[\t ]+)",
+		let rxp_wsp = "[\\t ]",
+			rxp_fws = "(?:(?:"+rxp_wsp+"*\\r?\\n)?"+rxp_wsp+"+)",
 			rxp_atext = "[^\\r\\n\\t \"(),.:;<>@\\[\\\\\\]]",
 			rxp_qtext = "[^\\r\\n\\t \"\\\\]",
 			rxp_quotedPair = "\\\\[^\\r\\n]",
@@ -683,203 +668,248 @@
 			
 			//these may be surrounded by CFWS
 			rxpAtom = "(?:"+rxp_atext+"+)",
-			rxpDotAtom = "(?:"+rxp_atext+"+(?:\\."+rxp_atext+"+)*)",
-			rxpQuotedString = "(?:\"(?:"+rxp_fws+"?"+rxp_qcontent+")*"+rxp_fws+"?\"",
+			//rxpDotAtom = "(?:"+rxp_atext+"+(?:\\."+rxp_atext+"+)*)",
+			rxpDotAtom = "(?:"+rxp_atext+"+(?:\\."+rxp_atext+"+)+)",
+			rxpQuotedString = "(?:\"(?:"+rxp_fws+"?"+rxp_qcontent+")*"+rxp_fws+"?\")";
 			
 			//local-part = dot-atom / quoted-string
 			//domain = dot-atom / domain-literal
-			//addr-spec = local-part "@" domain
+			//addr-spec = local-part "@" domain   //no CFWS allowed around the "@"
 			//display-name = 1*( atom / quoted-string )
 			//name-addr = [display-name] [CFWS] "<" addr-spec ">" [CFWS]
 			//mailbox = name-addr / addr-spec
-			//TODO: group, group-list, ..., address
-			
-			rxpAtomStart = new RegExp("^" + rxp_atext + "+", "i"),
-			rxpDotAtomStart = new RegExp("^" + rxpDotAtom, "i"),
-			rxpQuotedContentStart = new RegExp("^" + rxp_qcontent + "*", "i"),
-			
-			rxpDisplayName = new RegExp("^(?:[\\t ]*" + rxp_atext + "+[\\t ]*|\"(?:[\\t ]*" + rxp_qcontent + ")*[\\t ]*\")+$", "i"),
-			
-			text, wsp;
 		
-		//get the first block of text
-		if(m = rxpDotAtomStart.exec(mailbox)){
-			text = m[0];
-			mailbox = mailbox.slice(m[0].length);
-		}
-		else if(mailbox[0] === "\""){
-			ret = stripFWS(mailbox.slice(1));
-			text = "\"" + ret[0];
-			mailbox = ret[1];
-			while(mailbox && mailbox[0] !== "\""){
-				if(m = rxpQuotedContentStart.exec(mailbox)){
-					text += m[0];
+		function newRxp(rxp){ return new RegExp("^"+rxp, "i"); }
+		
+		let tokens = [];
+		
+		{
+			
+			let token,
+				trimmed,
+				m;
+			
+			while(mailbox.length){
+				
+				trimmed = trimCFWS(mailbox);
+				if(trimmed[0].length){
+					mailbox = trimmed[1];
+					token = { type:"wsp", value:trimmed[0] };
+					tokens.push(token);
+					if(!mailbox.length) break;
+				}
+				
+				token = {};
+				if(m = /^[<@>]/.exec(mailbox)){
+					token.type = "delimiter";
+					mailbox = mailbox.slice(1);
+					token.value = m[0];
+					tokens.push(token);
+				}
+				else if(m = newRxp(rxpQuotedString).exec(mailbox)){
+					token.type = "quoted-string";
 					mailbox = mailbox.slice(m[0].length);
-					ret = stripFWS(mailbox);
-					text += ret[0];
-					mailbox = ret[1];
+					trimmed = stripFWS(m[0]);
+					token.value = trimmed;
+					tokens.push(token);
+				}
+				else if(m = newRxp(rxpDotAtom).exec(mailbox)){
+					token.type = "dot-atom";
+					mailbox = mailbox.slice(m[0].length);
+					token.value = m[0];
+					tokens.push(token);
+				}
+				else if(m = newRxp(rxpAtom).exec(mailbox)){
+					token.type = "atom";
+					mailbox = mailbox.slice(m[0].length);
+					token.value = m[0];
+					tokens.push(token);
+				}
+				else if( (m = /^[a-z0-9:\[\].-]+/i.exec(mailbox)) && (trimmed = normalizeDNSHost(m[0])) ){
+					token.type = "domain";
+					mailbox = mailbox.slice(m[0].length);
+					token.value = trimmed.host;
+					tokens.push(token);
 				}
 				else{
 					return null;
 				}
+				
 			}
-			if(mailbox[0] !== "\"") return null;
-			text += "\"";
-			mailbox = mailbox.slice(1);
+			
 		}
-		else{
-			return null;
-		}
-		
-		ret = stripCFWS(mailbox);
-		if(!ret) return null;
-		wsp = ret[0]
-		mailbox = ret[1];
-		
-		
-		//At this point:
-		//text = local-part text   OR   display-name text
-		//wsp = WSP after the text
-		
 		
 		let parts = {};
+		
+		{
 			
-		if(mailbox[0] === "<"){	//`text` was the display name
-			if(nameAddr) return null;	//invalid mailbox; extra "<"
-			if(!rxpDisplayName.test(text)) return null;	//invalid display name
-			nameAddr = true;	//angle brackets are used
+			let foundDisplayName = false,
+				foundNoDisplayName = false,
+				foundAngleBracket = false,
+				foundNoAngleBracket = false,
+				foundLocalPart = false,
+				foundAtSign = false,
+				foundDomain = false,
+				foundClosingAngleBracket = false,
+				i = 0;
 			
-			//add the display name to the result
-			ret = stripCFWS(mailbox.slice(1));
-			if(!ret) return null;
-			result += text+wsp+"<"+ret[0];
-			mailbox = ret[1];
-			
-			parts.display = text;
-			
-			//get the local part
-			if(m = rxpAtomStart.exec(mailbox)){
-				text = m[0];
-				mailbox = mailbox.slice(m[0].length);
+			while(true){
+				
+				if(i === tokens.length){
+					if(foundDomain && (foundNoAngleBracket || foundClosingAngleBracket)){
+						break;
+					}
+					else{
+						return null;
+					}
+				}
+				else if(tokens[i].type === "wsp"){
+					if(i === 0 || i === tokens.length-1){
+						tokens.splice(i, 1);
+					}
+					else if((foundLocalPart && !foundAtSign) || (foundAtSign && !foundDomain)){
+						return null;	//WSP around "@"
+					}
+					else{
+						tokens[i].value = " ";
+						i++;
+					}
+				}
+				else if(!foundDisplayName && !foundNoDisplayName){
+					if(tokens[i].type === "quoted-string"){
+						tokens[i].value = "\"" + tokens[i].value.slice(1,-1).replace(/[\t ]+/g, " ") + "\"";
+						i++;
+					}
+					else if(tokens[i].type === "atom"){
+						i++;
+					}
+					else if(i === 1 && tokens[i].value === "@"){	//first token was the local part
+						foundNoDisplayName = true;
+						foundNoAngleBracket = true;
+						foundLocalPart = true;
+						foundAtSign = true;
+						i++;
+					}
+					else if(i > 0){
+						foundDisplayName = true;
+					}
+					else{
+						foundNoDisplayName = true;
+					}
+				}
+				else if(!foundAngleBracket && !foundNoAngleBracket){
+					if(tokens[i].value === "<"){
+						foundAngleBracket = true;
+						i++;
+					}
+					else if(foundDisplayName){
+						return null;
+					}
+					else{
+						foundNoAngleBracket = true;
+					}
+				}
+				else if(!foundLocalPart){
+					if(tokens[i].type === "atom" || tokens[i].type === "dot-atom" || tokens[i].type === "quoted-string"){
+						foundLocalPart = true;
+						i++;
+					}
+					else{
+						return null;
+					}
+				}
+				else if(!foundAtSign){
+					if(tokens[i].value === "@"){
+						foundAtSign = true;
+						i++;
+					}
+					else{
+						return null;
+					}
+				}
+				else if(!foundDomain){
+					if(tokens[i].type === "domain"){
+						foundDomain = true;
+						i++;
+					}
+					else if( (tokens[i].type === "atom" || tokens[i].type === "dot-atom") && (tokens[i].value = normalizeDNSHost(tokens[i].value)) ){
+						tokens[i].value = tokens[i].value.host;
+						foundDomain = true;
+						i++;
+					}
+					else{
+						return null;
+					}
+				}
+				else if(foundAngleBracket && !foundClosingAngleBracket){
+					if(tokens[i].value === ">"){
+						foundClosingAngleBracket = true;
+						i++
+					}
+					else{
+						return null;
+					}
+				}
+				else{
+				//there are characters remaining after the mailbox
+					return null;
+				}
+				
 			}
-			else if(m = rxpQuotedContentStart.exec(mailbox)){
-				text = m[0];
-				mailbox = mailbox.slice(m[0].length);
-			}
-			else{
-				return null;	//invalid mailbox
+			
+			parts.displayName = ""
+			if(foundDisplayName){
+				let rxp = newRxp(rxpAtom+"(?: "+rxpAtom+")*$");
+				while(tokens[0].value !== "<"){
+					
+					if(tokens[0].type === "quoted-string"){
+						let innerText = tokens[0].value.slice(1,-1).replace(/[\t ]+/g, " ");
+						if(rxp.test(innerText)){	//inner text of the quoted-string is a sequence of atoms separated by spaces
+							//convert the quoted-string to a sequence of atom and WSP tokens
+							tokens.splice(0, 1);
+							let rxp = new RegExp(rxpAtom, "ig"),
+								m, i=0;
+							while(m = rxp.exec(innerText)){
+								tokens.splice(i, 0, { type:"atom", value:m[0] }, { type:"wsp", value:" " });
+								i += 2;
+							}
+							i--;
+							tokens.splice(i, 1);	//remove the last WSP token
+						}
+					}
+					
+					parts.displayName += tokens[0].value;
+					tokens.shift();
+					
+				}
+				parts.displayName = parts.displayName.trim();
 			}
 			
-			ret = stripCFWS(mailbox);
-			if(!ret) return null;
-			wsp = ret[0];
-			mailbox = ret[1];
-		}
-		else{
-			parts.display = "";
-		}
-		
-		
-		//At this point:
-		//text = local-part text
-		//wsp = WSP after the text
-		
-		
-		//add the local part to the result
-		result += text+wsp;
-		
-		parts.local = text;
-		
-		
-		//At this point, `result` is one of these:
-		//	local-part
-		//	"<" local-part
-		//	display-name "<" local-part
-		
-		
-		if(mailbox[0] !== "@") return null;	//invalid address
-		
-		//add "@" to the result
-		ret = stripCFWS(mailbox.slice(1));
-		if(!ret) return null;
-		result += "@"+ret[0];
-		mailbox = ret[1];
-		
-		//get the domain and add it to the result
-		if(m = rxpDotAtomStart.exec(mailbox)){
-			result += m[0];
-			mailbox = mailbox.slice(m[0].length);
-			
-			parts.domain = m[0];
-		}
-		else if(m = rxpDomainLiteralStart.exec(mailbox)){
-			result += m[0];
-			mailbox = mailbox.slice(m[0].length);
-			
-			parts.domain = m[0];
-		}
-		else{
-			return null;	//invalid domain
-		}
-		
-		ret = stripCFWS(mailbox);
-		if(!ret) return null;
-		result += ret[0];
-		mailbox = ret[1];
-		
-		if(nameAddr){	//angle brackets are used
-			if(mailbox[0] !== ">") return null;	//invalid mailbox
-			ret = stripCFWS(mailbox.slice(1));
-			if(!ret) return null;
-			result += ">"+ret[0];
-			mailbox = ret[1];
-		}
-		
-		if(mailbox !== "") return null;	//invalid mailbox
-		
-		
-		//At this point, `result` is one of these:
-		//	local-part "@" domain
-		//	"<" local-part "@" domain ">"
-		//	display-name "<" local-part "@" domain ">"
-		
-		
-		//normalize the display name
-		parts.display = parts.display.replace(/\s+/, " ");	//replace blocks of whitespace with a single space
-		if(parts.display[0] === "\""){
-			parts.display = parts.display.slice(1,-1).trim();	//remove the outer quotes
-		}
-		
-		//normalize the local part
-		if(parts.local[0] === "\"" && (new RegExp("^"+rxpDotAtom+"$", "i")).test(parts.local.slice(1,-1))){
-			parts.local = parts.local.slice(1,-1);	//remove quotes if they aren't required
-		}
-		
-		//normalize the domain
-		if((/^\[IPv6:/i).test(parts.domain)){	//it's an IPv6 address literal
-			if(text = normalizeIPv6(parts.domain.slice(6, -1))){
-				parts.domain = "[IPv6:"+text+"]";
+			if(foundAngleBracket){
+				tokens.shift();
 			}
-			else{
-				return null;	//invalid IPv6
+			if(tokens[0].type === "wsp"){
+				tokens.shift();
 			}
-		}
-		else if(parts.domain[0] === "[" && (text = normalizeIPv4(parts.domain.slice(1,-1)))){	//it's an IPv4 address literal
-			parts.domain = text;
-		}
-		else if(parts.domain[0] !== "[" && (text = normalizeDNSHost(parts.domain).host)){	//it's a domain or an IPv4 address
-			parts.domain = text;
-		}
-		else{
-			parts.unrecognizedDomain = true;
-		}
-		
-		parts.simple = parts.local+"@"+parts.domain;
-		if(parts.display){
-			parts.full = "\""+parts.display+"\" <"+parts.simple+">";
-		}
-		else{
-			parts.full = parts.simple;
+			if(tokens[0].type === "quoted-string"){	//local part is a quoted-string
+				if(newRxp(rxpDotAtom+"$").test(tokens[0].value.slice(1,-1))){	//inner text of the quoted-string is a dot-atom
+					tokens[0].value = tokens[0].value.slice(1,-1);	//remove the quotes
+					//tokens[0].type = "dot-atom";
+				}
+			}
+			parts.localPart = tokens[0].value;
+			tokens.shift();
+			
+			tokens.shift();	//the "@"
+			
+			parts.domain = tokens[0].value;
+			
+			//ignore any remaining characters
+			
+			parts.simple = parts.localPart+"@"+parts.domain;
+			
+			parts.full = foundDisplayName ? parts.displayName+" <"+parts.simple+">" : parts.simple;
+			
 		}
 		
 		return parts;

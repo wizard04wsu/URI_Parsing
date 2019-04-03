@@ -17,13 +17,13 @@
 */	
 	let test = [
 		["http://foo", "http://foo/"],
-		["mailto:foo@bar", "mailto:foo@bar"],
+		//["mailto:foo@bar", "mailto:foo@bar"],
 		["foo:bar", "foo:bar"],
 		["foo:/bar", "foo:/bar"],
 		["foo://bar", "foo://bar"],
 		
 		["http://foo.bar/baz/bop.htm?a=1&b=&c#lorem", "http://foo.bar/baz/bop.htm?a=1&b=#lorem"],
-		["mailto:%22foo%22@bar", "mailto:%22foo%22@bar"],
+		//["mailto:%22foo%22@bar", "mailto:%22foo%22@bar"],
 		
 		["http:/foo", null],
 		["http:foo", null]
@@ -39,4 +39,12 @@
 		}
 	}
 	console.groupEnd();
-</script></head><body></body></html>
+	//console.log(ParseURI.emailAddress("foo \"ba\\\"r a\"baz < foo@bar.baz >"));
+	//console.log(ParseURI.emailAddress("\"f.oo\"@bar.baz"));
+	console.log(ParseURI.emailAddress("\"f oo\"@bar.baz"));
+</script></head><body>
+	<a href="mailto:foo%20%22ba%5C%22r%20a%22baz%20<wizard04@gmail.com>">test</a>
+	<a href="mailto:foo%20%22ba%5C%22r%20a%22baz%20<%22wiz%5C%22ard04%22@gmail.com>">test</a>
+	<a href="mailto:foo%20%22ba%5C%22r%20a%22baz%20<%22wizard04%22@gmail.com>">test</a>
+	<a href="mailto:<%22wizard04%22@gmail.com>">test</a>
+</body></html>
