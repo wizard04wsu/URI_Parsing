@@ -26,10 +26,6 @@
 		Object.defineProperty(object, propertyName, { value:value, writable:isWritable, enumerable:isEnumerable, configurable:isConfigurable });
 	}
 	
-	//****************************************************************
-	//**************************** URI *******************************
-	//****************************************************************
-	
 	/**
 	 * Validates and normalizes a URI, and splits it into its parts.
 	 * 
@@ -100,7 +96,7 @@
 			host = parts[5],
 			port = parts[6],
 			path = normalizePath(parts[7] || parts[9]),
-			query = parts[11],
+			query = normalizeQuery(parts[11]),
 			fragment = normalizeFragment(parts[12]);
 		
 		if(authority){
@@ -109,8 +105,6 @@
 		}
 		
 		uri = scheme+":" + (authority !== (void 0) ? "//"+authority : "") + path + (query ? "?"+query : "") + (fragment ? "#"+fragment : "");
-		
-		query = normalizeQuery(query);
 		
 		if((/^https?$/).test(scheme)){	//it's a URL (http or https)
 			
@@ -123,7 +117,7 @@
 			path = path || "/";
 			let queryObj = parseQuery(query);
 			
-			uri = scheme+"://"+authority + path + (query ? "?"+query : "") + (fragment ? "#"+fragment : "");
+			uri = scheme+"://"+authority + path + (query ? "?"+queryObj : "") + (fragment ? "#"+fragment : "");
 			
 			let authorityObj = {};
 			defineProperty(authorityObj, "toString", function (){ return authority; }, true, false, true);
@@ -495,7 +489,7 @@
 	 * ParseURI.query(queryString)
 	 * 
 	 * @param {string} queryString
-	 * @return {array} - Array of name/value pairs (each pair is an object {name, value}).
+	 * @return {array} - Array of name/value pairs (each pair is an object {name, value}). Coerces to a string of the normalized query string.
 	 * 
 	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986#section-3.4
 	 */
@@ -517,7 +511,6 @@
 			}
 			results.push( { name: decodeURIComponent(pair.shift()), value: decodeURIComponent(pair[0]) } );	//add the name/value pair to the results
 		}
-		queryString = pairs.join("&");
 		
 		defineProperty(results, "toString", function (){ return queryString; }, true, false, true);
 		
@@ -525,31 +518,29 @@
 		
 	};
 	
-	//****************************************************************
-	//************************** Mailto ******************************
-	//****************************************************************
-	
-	//splits a mailto scheme URI into its parts
-	//returns an object:
-	//	.uri		//entire normalized URI
-	//	.scheme		//"mailto"
-	//	.to			//array of valid email addresses
-	//	.cc			//array of valid email addresses
-	//	.bcc		//array of valid email addresses
-	//	.subject
-	//	.body
-	//	.headers	//array of other headers besides the above (each header is an object {name, value})
-	//returns null if it's not a valid mailto URI or there is no destination
-	//only includes valid email addresses; the rest are discarded
-	//see: RFC 6068   https://tools.ietf.org/html/rfc6068
+	/**
+	 * Splits a mailto scheme URI into its parts.
+	 * 
+	 * @param {object} parts - Object containing the URI, scheme, path, and query object.
+	 * @return {object} - Object containing the following. Null if the URI is invalid or there is no valid destination.
+	 *   {string} uri - normalized URI
+	 *   {string} scheme - "mailto"
+	 *   {string} path
+	 *   {array} to
+	 *   {array} cc
+	 *   {array} bcc
+	 *   {string} subject - Multiple "subject" headers are combined.
+	 *   {string} body - Multiple "body" headers are combined.
+	 *   {array} headers - Array containing any additional headers (each header is an object {name, value}).
+	 * 
+	 * Invalid destinations are discarded.
+	 * 
+	 * See: RFC 6068   https://tools.ietf.org/html/rfc6068
+	 */
 	function parseMailto(parts){
 		
-		if(!/^(?:[a-z0-9-._~!$'()*+,:@]|%[0-9A-F]{2})*$/i.test(parts.path) || !/^(?:[a-z0-9-._~!$'()*+,;:@]|%[0-9A-F]{2})*$/i.test(parts.query)){
-			return null;	//contains invalid characters
-		}
-		
 		//splits the string at the commas (ignoring commas within quoted strings or comments)
-		//only returns valid email addresses
+		//returns an array of valid email addresses
 		function splitEmailAddresses(str){
 			
 			let parts = str.split(","),
@@ -613,63 +604,74 @@
 		parts.body = "";
 		parts.headers = [];	//other headers besides the above (each header is an object {name, value})
 		
-		parts.to = parts.path ? splitEmailAddresses(parts.path) : [];
-		
-		let headers = parseQuery(parts.query);
-		for(let i=0; i<headers.length; i++){
-			if(headers[i].value === "") continue;
+		{
 			
-			headers[i].name = decodeURIComponent(headers[i].name);
-			if(headers[i].name === "to")
-				parts.to = parts.to.concat(splitEmailAddresses(headers[i].value));
-			else if(headers[i].name === "cc")
-				parts.cc = parts.cc.concat(splitEmailAddresses(headers[i].value));
-			else if(headers[i].name === "bcc")
-				parts.bcc = parts.bcc.concat(splitEmailAddresses(headers[i].value));
-			else if(headers[i].name === "subject")
-				parts.subject = decodeURIComponent(headers[i].value);
-			else if(headers[i].name === "body")
-				parts.body = decodeURIComponent(headers[i].value);
-			else{
-				headers[i].value = decodeURIComponent(headers[i].value);
-				parts.headers.push(headers[i]);
+			parts.to = parts.path ? splitEmailAddresses(parts.path) : [];
+			
+			let headers = parts.query;
+			for(let i=0; i<headers.length; i++){
+				if(headers[i].value === "") continue;
+				
+				headers[i].name = decodeURIComponent(headers[i].name);
+				if(headers[i].name === "to")
+					parts.to = parts.to.concat(splitEmailAddresses(headers[i].value));
+				else if(headers[i].name === "cc")
+					parts.cc = parts.cc.concat(splitEmailAddresses(headers[i].value));
+				else if(headers[i].name === "bcc")
+					parts.bcc = parts.bcc.concat(splitEmailAddresses(headers[i].value));
+				else if(headers[i].name === "subject")
+					parts.subject += decodeURIComponent(headers[i].value);
+				else if(headers[i].name === "body")
+					parts.body += decodeURIComponent(headers[i].value);
+				else{
+					headers[i].value = decodeURIComponent(headers[i].value);
+					parts.headers.push(headers[i]);
+				}
 			}
+			
+			if(parts.to.length + parts.cc.length + parts.bcc.length === 0) return null;	//no destination
+			
 		}
 		
-		if(parts.to.length + parts.cc.length + parts.bcc.length === 0) return null;	//no destination
-		
-		parts.uri = "mailto:" + encodePart(parts.to.join(","));
-		
-		let query = "";
-		if(parts.cc.length){
-			query += "cc=" + encodePart(parts.cc.join(","));
-		}
-		if(parts.bcc.length){
-			if(query) query += "&";
-			query += "bcc=" + encodePart(parts.bcc.join(","));
-		}
-		if(parts.subject){
-			if(query) query += "&";
-			query += "subject=" + encodePart(parts.subject);
-		}
-		if(parts.body){
-			if(query) query += "&";
-			query += "body=" + encodePart(parts.body);
-		}
-		if(parts.headers.length){
-			for(i=0; i<parts.headers.length; i++){
+		{
+			
+			parts.path = encodePart(parts.to.join(","));
+			
+			let query = "";
+			if(parts.cc.length){
+				query += "cc=" + encodePart(parts.cc.join(","));
+			}
+			if(parts.bcc.length){
 				if(query) query += "&";
-				query += encodePart(parts.headers[i].name) + "=" + encodePart(parts.headers[i].value);
+				query += "bcc=" + encodePart(parts.bcc.join(","));
 			}
+			if(parts.subject){
+				if(query) query += "&";
+				query += "subject=" + encodePart(parts.subject);
+			}
+			if(parts.body){
+				if(query) query += "&";
+				query += "body=" + encodePart(parts.body);
+			}
+			if(parts.headers.length){
+				for(i=0; i<parts.headers.length; i++){
+					if(query) query += "&";
+					query += encodePart(parts.headers[i].name) + "=" + encodePart(parts.headers[i].value);
+				}
+			}
+			
+			parts.uri = "mailto:" + parts.path + (query ? "?"+query : "");
+			
+			parts.query = parseQuery(query);
+			
 		}
-		
-		if(query) parts.uri += "?" + query;
 		
 		return parts;
+		
 	};
 	
 	/**
-	 * Normalizes a single email address (or mailbox) and splits it into its parts.
+	 * Normalizes a single email address (mailbox) and splits it into its parts.
 	 * 
 	 * ParseURI.emailAddress(address)
 	 * 
@@ -1011,23 +1013,6 @@
 		return parts;
 		
 	};
-	
-	/**
-	 * TODO
-	 * 
-	 * ParseURI.emailGroup(group)
-	 * 
-	 * TODO
-	 */
-	function parseEmailGroup(group){
-		
-		//TODO
-		
-	};
-	
-	//****************************************************************
-	//*************************** Fixes ******************************
-	//****************************************************************
 	
 	//attempts to fix a URI (if needed) and normalizes it
 	// allowedSchemes	a string or array of strings listing accepted schemes; if not specified, any scheme is allowed
