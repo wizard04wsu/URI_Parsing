@@ -1,4 +1,10 @@
 /**
+ * ParseURI(uri)
+ * ParseURI.domain(host)
+ * ParseURI.query(queryString)
+ * ParseURI.emailAddress(address)
+ * ParseURI.fixHyperlink(href)
+ * 
  * This script does not support:
  *   - internationalized domain names (IDNs)
  *   - non-ASCII email addresses (see RFC 6530)
@@ -1020,52 +1026,132 @@
 	//if the string does not have a scheme, it will be assumed that it's meant to be that of the current page (e.g., if str is a relative URL)
 	//https://tools.ietf.org/html/rfc3986#section-4.1
 	//returns null if it can't be fixed
-	function fixHyperlink(str, allowedSchemes, domain){
+	function fixHyperlink(href){
 		
-		let port = "";
-		
-		if(domain === void 0 && window && window.location && window.location.host){
-			domain = window.location.host;
-		}
-		else{
-			domain = normalizeDNSHost(domain.replace(/^([^:]*)((?::\d+)?)$/, function (match, p1, p2){
-				port = p2;
-				return p1;
-			}));
-		}
-		
-		if(allowedSchemes && allowedSchemes instanceof Array){	//allowedSchemes is an array
-			for(let i=0; i<allowedSchemes.length; i++){
-				if(!(/^[a-z][a-z0-9+.-]*$/i).test(allowedSchemes[i])){	//invalid scheme
-					allowedSchemes.splice(i,1);	//remove it from the array
-				}
-			}
-			if(!allowedSchemes.length){
-				return null;	//no valid schemes
-			}
-		}
-		else if(allowedSchemes){	//allowedSchemes is a single scheme
-			if(!(/^[a-z][a-z0-9+.-]*$/i).test(allowedSchemes)) return null;	//invalid scheme
-			allowedSchemes = [allowedSchemes];	//use it as the only allowed scheme
-		}
+		let location = (window && window.location) ? window.location : {},
+			hyperlink = href,
+			parts = {},
+			ret;
 		
 		//get scheme
-		let scheme = (/^([a-z][a-z0-9+.-]*):/i).exec(str);
+		let scheme = (/^([a-z][a-z0-9+.-]*):/i).exec(href);
 		if(scheme){
-			scheme = scheme[1].toLowerCase();
-			str = str.slice(scheme.length+1);
+			scheme = scheme[0].toLowerCase();
+			href = href.slice(scheme.length);
 		}
-		else{	//the string does not include a valid scheme
-			if(window && window.location && window.location.protocol){
-				scheme = window.location.protocol.slice(0,-1);	//assume it's meant to be that of the current page
+		else{
+			scheme = location.protocol || "http:";
+			if( (ret = ParseURI(scheme+href)) ) return ret.uri;
+		}
+		parts.scheme = scheme;
+		
+		if(/^https?:$/.test(scheme)){
+			
+			if(/^\/\//.test(href)){	//href is relative to the scheme, and should start with the authority
+				
+				href.slice(2);
+				parts.userinfo = "";
+				parts.host = "";
+				parts.port = "";
+				
+				//get userinfo
+				
+				ret = /^([^@:\/\[]*)@/.exec(href);
+				if(ret){	//userinfo
+					parts.userinfo = ret[1];
+					//percent-encode illegal characters
+					parts.userinfo = parts.userinfo.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
+					href = href.slice(ret[0].length);
+				}
+				
+				//get host
+				
+				ret = /^\[([a-f0-9:.\]]*)\]/i.exec(href);
+				if(ret){	//possibly valid IPv6
+					ret = normalizeIPv6(ret[1]);
+					if(ret){	//valid IPv6
+						parts.host = "["+ret+"]";
+						href = href.slice(ret[0].length);
+					}
+					else{
+						return null;
+					}
+				}
+				else{
+					ret = /^([^:\/]*)([:\/]|$)/.exec(href);
+					if(ret){	//possible host
+						parts.host = normalizeDNSHost(ret[1]);
+						if(parts.host){	//valid host
+							href = href.slice(ret[1].length);
+						}
+						else{
+							return null;
+						}
+					}
+					else{
+						return null;
+					}
+				}
+				
+				//get port
+				
+				ret = /^:(\d*)(?=\/|$)/.exec(href);
+				if(ret){	//port
+					parts.port = ret[1];
+					href = href.slice(ret[0].length);
+				}
+				else if(href[0] === ":"){
+					return null;
+				}
+				
+				ret = ParseURI(parts.scheme + (parts.userinfo?parts.userinfo+"@":"") + parts.host + (parts.port?":"+parts.port:"") + href);
+				if(ret) return ret.uri;
+				
+				//get path
+				
+				//TODO
+				
+				//get query
+				
+				//TODO
+				
+				//get fragment
+				
+				//TODO
+				
 			}
-			else{
-				return null;	//unknown scheme
+			else if(href[0] === "/"){	//href is relative to the authority
+				
+				//TODO
+				
 			}
+			else{	//href is relative to the page
+				
+				//TODO
+				
+			}
+			
 		}
-		if(allowedSchemes && allowedSchemes.indexOf(scheme) < 0){	//scheme is not allowed
-			return null;
+		else if(scheme === "mailto:"){
+			
+			//TODO
+			
 		}
+		else{
+			
+			//TODO
+			
+		}
+		
+		return null;
+		
+		
+		
+		
+		
+		
+		
+		
 		
 		//percent-encode illegal characters
 		str = str.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@\/\[\]%?#]|%(?![0-9A-F]{2}))+/ig, function (match){
@@ -1125,9 +1211,9 @@
 	};
 	
 	this.ParseURI = ParseURI;
-	this.ParseURI.fixHyperlink = fixHyperlink;
 	this.ParseURI.domain = normalizeDNSHost;
 	this.ParseURI.query = parseQuery;
 	this.ParseURI.emailAddress = parseEmailAddress;
+	this.ParseURI.fixHyperlink = fixHyperlink;
 	
 }).call(this);
