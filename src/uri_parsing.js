@@ -1,10 +1,18 @@
 /**
- * This script does not support IPvFuture literal address formats, nor internationalized domain names (IDNs).
+ * This script does not support:
+ *   - internationalized domain names (IDNs)
+ *   - non-ASCII email addresses (see RFC 6530)
+ *   - IPvFuture literal address formats
+ *   - obsolete syntaxes
  * 
  * General references:
  *   RFC 3986 "Uniform Resource Identifier (URI): Generic Syntax"   http://tools.ietf.org/html/rfc3986
  *   How to Obscure Any URL   http://www.pc-help.org/obscure.htm
  *   RFC 6068 "The 'mailto' URI Scheme"	  http://tools.ietf.org/html/rfc6068
+ *   Wikipedia: Email address   https://en.wikipedia.org/wiki/Email_address
+ *   RFC 5322 "Internet Message Format"   https://tools.ietf.org/html/rfc5322
+ *   RFC 5321 "Simple Mail Transfer Protocol"   https://tools.ietf.org/html/rfc5321#section-4.1.2
+ *   RFC 5234 "Augmented BNF for Syntax Specifications: ABNF"   https://tools.ietf.org/html/rfc5234#appendix-B.1
  */
 
 
@@ -30,13 +38,13 @@
 	 *   {string} .scheme
 	 *   {string} .authority - For non-http/https/mailto URIs. Empty string if there isn't an authority.
 	 *   {object} .authority - For http or https URIs. Coerces to a string of the entire authority.
-	 *     {string} .authority.userinfo - For http or https URIs.
+	 *     {string} .authority.userinfo
 	 *     {string} .authority.host - Coerces to a string.
 	 *       {array} .authority.host.labels - Array of labels within a domain name. Undefined if it's an IP.
 	 *       {string} .authority.host.ip - IP address (IPv4 if possible).
 	 *       {string} .authority.host.ipv4 - IPv4 version of the IP.
 	 *       {string} .authority.host.ipv6 - IPv6 version of the IP.
-	 *     {string} .authority.port - For http or https URIs.
+	 *     {string} .authority.port
 	 *   {string} .path - For non-mailto URIs.
 	 *   {array} .query - For non-mailto URIs. An array of name/value pairs (each pair is an object {name, value}). Coerces to a string of the entire query.
 	 *   {string} .fragment - For non-mailto URIs.
@@ -47,7 +55,7 @@
 	 *   {string} .body - For mailto URIs.
 	 *   {array} .headers - For mailto URIs. An array of additional email headers (each header is an object {name, value}).
 	 * 
-	 * See RFC 3986 http://tools.ietf.org/html/rfc3986
+	 * See: RFC 3986   http://tools.ietf.org/html/rfc3986
 	 */
 	function ParseURI(uri){
 		
@@ -165,8 +173,8 @@
 	
 	//converts an obscured host to a more readable one
 	//returns null if it's not a valid host
-	//see http://www.pc-help.org/obscure.htm
-	// and RFC 3986 http://tools.ietf.org/html/rfc3986
+	//see: http://www.pc-help.org/obscure.htm
+	//     RFC 3986   http://tools.ietf.org/html/rfc3986
 	function normalizeHost(host){
 		
 		let ip;
@@ -194,10 +202,10 @@
 	//converts an obscured host to a more readable one; only accepts IP addresses and DNS domain names as valid
 	//returns null if it's not valid
 	//this does not support internationalized domain names (IDNs) (RFC 3490)
-	//see RFC 3986 http://tools.ietf.org/html/rfc3986#section-3.2.2
-	// and RFC 2181 http://tools.ietf.org/html/rfc2181#section-11
-	// and RFC 1123 https://tools.ietf.org/html/rfc1123#page-13
-	// and RFC 3490 https://tools.ietf.org/html/rfc3490
+	//see: RFC 3986   http://tools.ietf.org/html/rfc3986#section-3.2.2
+	//     RFC 2181   http://tools.ietf.org/html/rfc2181#section-11
+	//     RFC 1123   https://tools.ietf.org/html/rfc1123#page-13
+	//     RFC 3490   https://tools.ietf.org/html/rfc3490
 	function normalizeDNSHost(host){
 		
 		host = normalizeHost(host);
@@ -223,8 +231,8 @@
 	};
 	
 	//converts the four 8-bit decimal values of a normalized IPv4 address to the two low-order 16-bit hexadecimal values of an IPv6 address
-	//see RFC 4291 http://tools.ietf.org/html/rfc4291#section-2.5.5
-	// and RFC 5952 http://tools.ietf.org/html/rfc5952#section-5
+	//see: RFC 4291   http://tools.ietf.org/html/rfc4291#section-2.5.5
+	//     RFC 5952   http://tools.ietf.org/html/rfc5952#section-5
 	function v4to6(ip){
 		ip = ip.split(".");
 		return ((ip[0]*256 + ip[1]*1).toString(16) + ":" + (ip[2]*256 + ip[3]*1).toString(16)).toLowerCase();
@@ -244,8 +252,8 @@
 		return result += a+"."+b;
 	}
 	
-	//see http://www.pc-help.org/obscure.htm
-	// and http://en.wikipedia.org/wiki/IPv4#Address_representations
+	//see: http://www.pc-help.org/obscure.htm
+	//     http://en.wikipedia.org/wiki/IPv4#Address_representations
 	function normalizeIPv4(ip){
 		
 		if(!(/^(?=(\d+|0x[0-9A-F]+))\1(?:\.(?=(\d+|0x[0-9A-F]+))\2){0,3}$/i).test(ip)) return null;	//invalid IP address
@@ -286,9 +294,9 @@
 		
 	};
 	
-	//see RFC 4291 http://tools.ietf.org/html/rfc4291
-	// and RFC 5952 http://tools.ietf.org/html/rfc5952#section-4
-	// and RFC 5952 http://tools.ietf.org/html/rfc5952#section-5
+	//see: RFC 4291   http://tools.ietf.org/html/rfc4291
+	//     RFC 5952   http://tools.ietf.org/html/rfc5952#section-4
+	//     RFC 5952   http://tools.ietf.org/html/rfc5952#section-5
 	function normalizeIPv6(ip, keepEmbeddedIPv4){
 		
 		if(!(/^[0-9A-F:.]{2,}$/i).test(ip)) return null;	//invalid IP address
@@ -443,7 +451,7 @@
 	//	.headers	//array of other headers besides the above (each header is an object {name, value})
 	//returns null if it's not a valid mailto URI or there is no destination
 	//only includes valid email addresses; the rest are discarded
-	//see RFC 6068 http://tools.ietf.org/html/rfc6068
+	//see: RFC 6068   http://tools.ietf.org/html/rfc6068
 	function parseMailto(parts){
 		
 		if(!/^(?:[a-z0-9-._~!$'()*+,:@]|%[0-9A-F]{2})*$/i.test(parts.path) || !/^(?:[a-z0-9-._~!$'()*+,;:@]|%[0-9A-F]{2})*$/i.test(parts.query)){
@@ -573,25 +581,23 @@
 	/**
 	 * Normalizes a single email address (mailbox) and splits it into its parts.
 	 * 
-	 * ParseURI.parseEmailAddress(address)
-	 * @param {string} address - email address or mailbox (e.g., "display name" <local@domain> )
+	 * ParseURI.emailAddress(address)
+	 * @param {string} address - email address or mailbox (mailbox example: "John Doe" <john.doe@example.com> )
 	 * @return {object} - Object containing the mailbox and its parts. Null if it's invalid.
 	 *   {string} .full - If there is a display name: "display name" <local@domain>
 	 *                    If there isn't: local@domain
 	 *   {string} .simple - local@domain
-	 *   {string} .display - display name
-	 *   {string} .local - Local part of the address.
-	 *   {string} .domain - Domain part of the address. This doesn't have to be a DNS domain or IP to be valid.
-	 *   {boolean} .unrecognizedDomain - True if the domain is something other than a DNS domain or IP, otherwise undefined.
+	 *   {string} .displayName - display name
+	 *   {string} .unescapedDisplayName - display name with any quoted strings unescaped (this is what you would show to a user)
+	 *   {string} .localPart - Local part of the address.
+	 *   {string} .domain - Domain part of the address. Only DNS domains or IPs are deemed valid.
 	 * 
+	 * Does not parse groups (e.g., a distribution list).
 	 * Unfolds whitespace and removes comments.
-	 * Obsolete syntax is not supported.
-	 * See RFC 5322 http://tools.ietf.org/html/rfc5322
-	 *   and RFC 5321 http://tools.ietf.org/html/rfc5321#section-4.1.3
-	 *   and RFC 6532 https://tools.ietf.org/html/rfc6532#section-3.2
-	 *   and RFC 6854 https://tools.ietf.org/html/rfc6854
-	 *   and http://www.addedbytes.com/lab/email-address-validation
-	 *   and http://email.about.com/od/emailbehindthescenes/f/email_case_sens.htm
+	 * Does not consider the 998 character limit per line.
+	 * See: RFC 5322   http://tools.ietf.org/html/rfc5322
+	 *      RFC 5321   http://tools.ietf.org/html/rfc5321#section-4.1.2
+	 *      Wikipedia: Email address   https://en.wikipedia.org/wiki/Email_address
 	 */
 	function parseEmailAddress(address){
 		
@@ -655,22 +661,20 @@
 		
 		//removes newlines from FWS in str
 		//returns a string with the remaining whitespace and text
-		function stripFWS(str){
-			return str.replace(/\r?\n([\t ]+)/g, "$1");
-		}
+		function stripFWS(str){ return str.replace(/\r?\n([\t ]+)/g, "$1"); }
 		
 		let rxp_wsp = "[\\t ]",
 			rxp_fws = "(?:(?:"+rxp_wsp+"*\\r?\\n)?"+rxp_wsp+"+)",
-			rxp_atext = "[^\\r\\n\\t \"(),.:;<>@\\[\\\\\\]]",
-			rxp_qtext = "[^\\r\\n\\t \"\\\\]",
-			rxp_quotedPair = "\\\\[^\\r\\n]",
+			rxp_atext = "[!#$%&'*+\\-/0-9=?A-Z^_`a-z{|}~]",
+			rxp_qtext = "[!#$%&'()*+,\\-./0-9:;<=>?@A-Z[\\]^_`a-z{|}~]",
+			//rxp_quotedPair = "\\\\[\\t !\"#$%&'()*+,\\-./0-9:;<=>?@A-Z[\\\\\\]^_`a-z{|}~]",
+			rxp_quotedPair = "\\\\[\\t !-~]",
 			rxp_qcontent = "(?:"+rxp_qtext+"|"+rxp_quotedPair+")",
 			
 			//these may be surrounded by CFWS
 			rxpAtom = "(?:"+rxp_atext+"+)",
-			//rxpDotAtom = "(?:"+rxp_atext+"+(?:\\."+rxp_atext+"+)*)",
-			rxpDotAtom = "(?:"+rxp_atext+"+(?:\\."+rxp_atext+"+)+)",
-			rxpQuotedString = "(?:\"(?:"+rxp_fws+"?"+rxp_qcontent+")*"+rxp_fws+"?\")";
+			rxpDotAtom = "(?:"+rxp_atext+"+(?:\\."+rxp_atext+"+)*)",
+			rxpQuotedString = "(?:\"(?:(?:"+rxp_fws+"?"+rxp_qcontent+"+)+"+rxp_fws+"?|"+rxp_fws+")\")";	//see https://www.rfc-editor.org/errata/eid3135
 			
 			//local-part = dot-atom / quoted-string
 			//domain = dot-atom / domain-literal
@@ -717,12 +721,9 @@
 					token.type = "dot-atom";
 					mailbox = mailbox.slice(m[0].length);
 					token.value = m[0];
-					tokens.push(token);
-				}
-				else if(m = newRxp(rxpAtom).exec(mailbox)){
-					token.type = "atom";
-					mailbox = mailbox.slice(m[0].length);
-					token.value = m[0];
+					if(newRxp(rxpAtom+"$").test(m[0])){
+						token.type = "atom";
+					}
 					tokens.push(token);
 				}
 				else if( (m = /^[a-z0-9:\[\].-]+/i.exec(mailbox)) && (trimmed = normalizeDNSHost(m[0])) ){
@@ -857,32 +858,35 @@
 				
 			}
 			
-			parts.displayName = ""
+			let rxp_redundantPairs = new RegExp("\\\\("+rxp_qtext+")", "ig");
+			
+			parts.displayName = "";
+			parts.unescapedDisplayName = "";
 			if(foundDisplayName){
-				let rxp = newRxp(rxpAtom+"(?: "+rxpAtom+")*$");
+				let rxp_atomSequence = newRxp(rxpAtom+"(?: "+rxpAtom+")*$");
 				while(tokens[0].value !== "<"){
 					
 					if(tokens[0].type === "quoted-string"){
-						let innerText = tokens[0].value.slice(1,-1).replace(/[\t ]+/g, " ");
-						if(rxp.test(innerText)){	//inner text of the quoted-string is a sequence of atoms separated by spaces
-							//convert the quoted-string to a sequence of atom and WSP tokens
-							tokens.splice(0, 1);
-							let rxp = new RegExp(rxpAtom, "ig"),
-								m, i=0;
-							while(m = rxp.exec(innerText)){
-								tokens.splice(i, 0, { type:"atom", value:m[0] }, { type:"wsp", value:" " });
-								i += 2;
-							}
-							i--;
-							tokens.splice(i, 1);	//remove the last WSP token
+						let innerText = tokens[0].value.slice(1,-1).replace(rxp_redundantPairs, "$1").replace(/[\t ]+/g, " ");
+						if(rxp_atomSequence.test(innerText)){	//inner text of the quoted-string is a sequence of atoms separated by spaces
+							parts.displayName += innerText;
+							parts.unescapedDisplayName += innerText;
+						}
+						else{
+							parts.displayName += "\""+innerText+"\"";
+							parts.unescapedDisplayName += innerText.replace(/\\(.)/g, "$1");
 						}
 					}
+					else{
+						parts.displayName += tokens[0].value;
+						parts.unescapedDisplayName += tokens[0].value;
+					}
 					
-					parts.displayName += tokens[0].value;
 					tokens.shift();
 					
 				}
 				parts.displayName = parts.displayName.trim();
+				parts.unescapedDisplayName = parts.unescapedDisplayName.replace(/ {2,}/g, " ").trim();
 			}
 			
 			if(foundAngleBracket){
@@ -894,7 +898,9 @@
 			if(tokens[0].type === "quoted-string"){	//local part is a quoted-string
 				if(newRxp(rxpDotAtom+"$").test(tokens[0].value.slice(1,-1))){	//inner text of the quoted-string is a dot-atom
 					tokens[0].value = tokens[0].value.slice(1,-1);	//remove the quotes
-					//tokens[0].type = "dot-atom";
+				}
+				else{
+					tokens[0].value = tokens[0].value.replace(rxp_redundantPairs, "$1");
 				}
 			}
 			parts.localPart = tokens[0].value;
