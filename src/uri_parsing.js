@@ -470,7 +470,10 @@
 	//returns an array of name/value pairs (each pair is an object {name, value})
 	function parseQuery(queryString){
 		
-		if(!queryString) return [];
+		if(!queryString && queryString !== 0) return [];
+		
+		//decode percent encodings of unreserved characters: DIGIT ALPHA -._~
+		host = host.replace(/%(2[DE]|3\d|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
 		
 		let pairs = queryString.split("&"),
 			results = [],
