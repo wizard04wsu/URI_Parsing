@@ -62,8 +62,7 @@
 	 */
 	function ParseURI(uri){
 		
-		if(!uri) return null;
-		uri = String(uri);
+		uri = ""+uri;
 		
 		let rxp = /^([a-z][a-z0-9+.-]*):(?:\/\/((?:(?=((?:[a-z0-9-._~!$&'()*+,;=:]|%[0-9A-F]{2})*))(\3)@)?(?=(\[[0-9A-F:.]{2,}\]|(?:[a-z0-9-._~!$&'()*+,;=]|%[0-9A-F]{2})*))\5(?::(?=(\d*))\6)?)(\/(?=((?:[a-z0-9-._~!$&'()*+,;=:@\/]|%[0-9A-F]{2})*))\8)?|(\/?(?!\/)(?=((?:[a-z0-9-._~!$&'()*+,;=:@\/]|%[0-9A-F]{2})*))\10)?)(?:\?(?=((?:[a-z0-9-._~!$&'()*+,;=:@\/?]|%[0-9A-F]{2})*))\11)?(?:#(?=((?:[a-z0-9-._~!$&'()*+,;=:@\/?]|%[0-9A-F]{2})*))\12)?$/i;
 		/*Composed as follows:
@@ -186,10 +185,10 @@
 	 */
 	function normalizeHost(host){
 		
-		let ip;
-		
 		if(host === "") return "";
-		host = String(host);
+		host = ""+host;
+		
+		let ip;
 		
 		if((/^\[.*\]$/i).test(host) && (ip = normalizeIPv6(host.slice(1, -1))) ) return "["+ip+"]";	//it's a valid IPv6 address
 		
@@ -296,6 +295,8 @@
 	 */
 	function normalizeIPv4(ip){
 		
+		ip = ""+ip;
+		
 		if(!(/^(?=(\d+|0x[0-9A-F]+))\1(?:\.(?=(\d+|0x[0-9A-F]+))\2){0,3}$/i).test(ip)) return null;	//invalid IP address
 		
 		let parts = ip.split("."),
@@ -347,7 +348,7 @@
 	 */
 	function normalizeIPv6(ip, useMixedNotation){
 		
-		if(!ip) return null;
+		ip = ""+ip;
 		if(useMixedNotation === void 0) useMixedNotation = true;	//default is true
 		
 		if(!(/^[0-9A-F:.]{2,}$/i).test(ip)) return null;	//invalid IP address
@@ -457,7 +458,8 @@
 	 */
 	function normalizePath(path){
 		
-		if(!path && path !== 0) return "";
+		if(path === "") return "";
+		path = ""+path;
 		
 		//decode percent encodings of unreserved characters: DIGIT ALPHA -._~
 		host = host.replace(/%(2[DE]|3\d|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
@@ -480,6 +482,8 @@
 	 */
 	function normalizeQuery(queryString){
 		
+		queryString = ""+queryString;
+		
 		//decode percent encodings of unreserved characters: DIGIT ALPHA -._~
 		return queryString.replace(/%(2[DE]|3\d|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
 		
@@ -497,7 +501,8 @@
 	 */
 	function parseQuery(queryString){
 		
-		if(!queryString && queryString !== 0) return [];
+		if(queryString === "") return [];
+		queryString = ""+queryString;
 		
 		queryString = normalizeQuery(queryString);
 		
@@ -687,10 +692,8 @@
 	 */
 	function parseEmailAddress(address){
 		
-		if(!address) return null;
-		
 		//renaming the variable to avoid confusion with the specs (this function does not parse groups)
-		let mailbox = address;
+		let mailbox = ""+address;
 		address = void 0;
 		
 		if(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(mailbox)) return null;	//invalid characters
