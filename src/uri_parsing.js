@@ -468,6 +468,7 @@
 	
 	//parses a query string as a sequence of name/value pairs
 	//returns an array of name/value pairs (each pair is an object {name, value})
+	//https://tools.ietf.org/html/rfc3986#section-3.4
 	function parseQuery(queryString){
 		
 		if(!queryString && queryString !== 0) return [];
