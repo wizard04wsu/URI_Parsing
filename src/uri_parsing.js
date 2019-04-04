@@ -20,6 +20,8 @@
 	
 	"use strict";
 	
+	let normalizeFragment = normalizeQuery;
+	
 	function defineProperty(object, propertyName, value, isWritable, isEnumerable, isConfigurable){
 		Object.defineProperty(object, propertyName, { value:value, writable:isWritable, enumerable:isEnumerable, configurable:isConfigurable });
 	}
@@ -47,7 +49,7 @@
 	 *       {string} .authority.host.ipv6 - IPv6 version of the IP.
 	 *     {string} .authority.port
 	 *   {string} .path - For non-mailto URIs.
-	 *   {array} .query - For non-mailto URIs. An array of name/value pairs (each pair is an object {name, value}). Coerces to a string of the entire query.
+	 *   {array} .query - For non-mailto URIs. An array of decoded name/value pairs (each pair is an object {name, value}). Coerces to a string of the entire query.
 	 *   {string} .fragment - For non-mailto URIs.
 	 *   {array} .to - For mailto URIs. Array of valid email addresses.
 	 *   {array} .cc - For mailto URIs. Array of valid email addresses.
@@ -100,7 +102,7 @@
 			port = parts[6],
 			path = normalizePath(parts[7] || parts[9]),
 			query = parts[11],
-			fragment = parts[12];
+			fragment = normalizeFragment(parts[12]);
 		
 		if(authority){
 			if((host = normalizeHost(host)) === null) return null;	//invalid host
@@ -109,8 +111,7 @@
 		
 		uri = scheme+":" + (authority !== (void 0) ? "//"+authority : "") + path + (query ? "?"+query : "") + (fragment ? "#"+fragment : "");
 		
-		let queryObj = parseQuery(query);
-		query = queryObj.toString();
+		query = normalizeQuery(query);
 		
 		if((/^https?$/).test(scheme)){	//it's a URL (http or https)
 			
@@ -121,6 +122,7 @@
 			port = port || (scheme === "http" ? "80" : "443");
 			authority = (userinfo ? userinfo+"@" : "") + host.host + ((scheme==="http" && port==="80") || (scheme==="https" && port==="443") ? "" : ":"+port);
 			path = path || "/";
+			let queryObj = parseQuery(query);
 			
 			uri = scheme+"://"+authority + path + (query ? "?"+query : "") + (fragment ? "#"+fragment : "");
 			
@@ -153,7 +155,7 @@
 					uri: uri,
 					scheme: scheme,
 					path: path,
-					query: query
+					query: parseQuery(query);
 				});
 			
 		}
@@ -164,7 +166,7 @@
 				scheme: scheme,
 				authority: authority,
 				path: path,
-				query: queryObj,
+				query: query,
 				fragment: fragment
 			};
 			
@@ -451,6 +453,7 @@
 	 * @return {string}
 	 * 
 	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986#section-3.3
+	 *                 https://tools.ietf.org/html/rfc3986#section-2.4
 	 */
 	function normalizePath(path){
 		
@@ -466,33 +469,54 @@
 		
 	};
 	
-	//parses a query string as a sequence of name/value pairs
-	//returns an array of name/value pairs (each pair is an object {name, value})
-	//https://tools.ietf.org/html/rfc3986#section-3.4
+	/**
+	 * Converts and obscured query string to a more readable one.
+	 * 
+	 * @param {string} queryString
+	 * @return {string}
+	 * 
+	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986#section-3.4
+	 *                 https://tools.ietf.org/html/rfc3986#section-2.4
+	 */
+	function normalizeQuery(queryString){
+		
+		//decode percent encodings of unreserved characters: DIGIT ALPHA -._~
+		return queryString.replace(/%(2[DE]|3\d|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
+		
+	}
+	
+	/**
+	 * Parses a query string as a sequence of name/value pairs.
+	 * 
+	 * ParseURI.query(queryString)
+	 * 
+	 * @param {string} queryString
+	 * @return {array} - Array of name/value pairs (each pair is an object {name, value}).
+	 * 
+	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986#section-3.4
+	 */
 	function parseQuery(queryString){
 		
 		if(!queryString && queryString !== 0) return [];
 		
-		//decode percent encodings of unreserved characters: DIGIT ALPHA -._~
-		host = host.replace(/%(2[DE]|3\d|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
+		queryString = normalizeQuery(queryString);
 		
 		let pairs = queryString.split("&"),
 			results = [],
-			queryObj = {};
+			pair;
 		for(let i=0; i<pairs.length; i++){
-			let pair = pairs[i].split("=");
-			if(pair.length === 1 || pair[0] === ""){	//there is no "=" or no name; skip it
+			pair = pairs[i].split("=");
+			if(pair.length <= 1 || pair[0] === ""){	//there is no name or no "="; skip it
 				pairs.splice(i--,1);
 				continue;
 			}
-			results.push( { name: decodeURIComponent(pair.shift()), value: decodeURIComponent(pair.join("=")) } );	//add the name/value pair to the results
+			results.push( { name: decodeURIComponent(pair.shift()), value: decodeURIComponent(pair[0]) } );	//add the name/value pair to the results
 		}
 		queryString = pairs.join("&");
 		
-		queryObj.pairs = results;
-		defineProperty(queryObj, "toString", function (){ return queryString; }, true, false, true);
+		defineProperty(results, "toString", function (){ return queryString; }, true, false, true);
 		
-		return queryObj;
+		return results;
 		
 	};
 	
@@ -738,12 +762,13 @@
 			rxpDotAtom = "(?:"+rxp_atext+"+(?:\\."+rxp_atext+"+)*)",
 			rxpQuotedString = "(?:\"(?:(?:"+rxp_fws+"?"+rxp_qcontent+"+)+"+rxp_fws+"?|"+rxp_fws+")\")";	//see https://www.rfc-editor.org/errata/eid3135
 			
-			//local-part = dot-atom / quoted-string
-			//domain = dot-atom / domain-literal
-			//addr-spec = local-part "@" domain   //no CFWS allowed around the "@"
-			//display-name = 1*( atom / quoted-string )
-			//name-addr = [display-name] [CFWS] "<" addr-spec ">" [CFWS]
-			//mailbox = name-addr / addr-spec
+			/* local-part = dot-atom / quoted-string
+			   domain = dot-atom / domain-literal
+			   addr-spec = local-part "@" domain   //no CFWS allowed around the "@"
+			   display-name = 1*( atom / quoted-string )
+			   name-addr = [display-name] [CFWS] "<" addr-spec ">" [CFWS]
+			   mailbox = name-addr / addr-spec
+			*/
 		
 		function newRxp(rxp){ return new RegExp("^"+rxp, "i"); }
 		
@@ -984,6 +1009,19 @@
 		
 	};
 	
+	/**
+	 * TODO
+	 * 
+	 * ParseURI.emailGroup(group)
+	 * 
+	 * TODO
+	 */
+	function parseEmailGroup(group){
+		
+		//TODO
+		
+	};
+	
 	//****************************************************************
 	//*************************** Fixes ******************************
 	//****************************************************************
@@ -1101,6 +1139,7 @@
 	this.ParseURI = ParseURI;
 	this.ParseURI.fixHyperlink = fixHyperlink;
 	this.ParseURI.domain = normalizeDNSHost;
+	this.ParseURI.query = parseQuery;
 	this.ParseURI.emailAddress = parseEmailAddress;
 	
 }).call(this);
