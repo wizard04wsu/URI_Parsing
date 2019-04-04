@@ -6,9 +6,9 @@
  *   - obsolete syntaxes
  * 
  * General references:
- *   RFC 3986 "Uniform Resource Identifier (URI): Generic Syntax"   http://tools.ietf.org/html/rfc3986
+ *   RFC 3986 "Uniform Resource Identifier (URI): Generic Syntax"   https://tools.ietf.org/html/rfc3986
  *   How to Obscure Any URL   http://www.pc-help.org/obscure.htm
- *   RFC 6068 "The 'mailto' URI Scheme"	  http://tools.ietf.org/html/rfc6068
+ *   RFC 6068 "The 'mailto' URI Scheme"	  https://tools.ietf.org/html/rfc6068
  *   Wikipedia: Email address   https://en.wikipedia.org/wiki/Email_address
  *   RFC 5322 "Internet Message Format"   https://tools.ietf.org/html/rfc5322
  *   RFC 5321 "Simple Mail Transfer Protocol"   https://tools.ietf.org/html/rfc5321#section-4.1.2
@@ -32,6 +32,7 @@
 	 * Validates and normalizes a URI, and splits it into its parts.
 	 * 
 	 * ParseURI(uri)
+	 * 
 	 * @param {string} uri
 	 * @return {object} - Object containing the URI and its parts. Null if the URI is invalid. The members depend on if the scheme is http, https, mailto, or something else. Possible members:
 	 *   {string} .uri - The normalized URI.
@@ -55,7 +56,7 @@
 	 *   {string} .body - For mailto URIs.
 	 *   {array} .headers - For mailto URIs. An array of additional email headers (each header is an object {name, value}).
 	 * 
-	 * See: RFC 3986   http://tools.ietf.org/html/rfc3986
+	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986
 	 */
 	function ParseURI(uri){
 		
@@ -171,10 +172,16 @@
 		
 	};
 	
-	//converts an obscured host to a more readable one
-	//returns null if it's not a valid host
-	//see: http://www.pc-help.org/obscure.htm
-	//     RFC 3986   http://tools.ietf.org/html/rfc3986
+	/**
+	 * Converts an obscured host to a more readable one.
+	 * 
+	 * @param {string} host
+	 * @return {string} - The normalized host. Null if the host is invalid.
+	 * 
+	 * See: How to Obscure Any URL   http://www.pc-help.org/obscure.htm
+	 *      RFC 3986   https://tools.ietf.org/html/rfc3986#section-3.2.2
+	 *                 https://tools.ietf.org/html/rfc3986#section-2
+	 */
 	function normalizeHost(host){
 		
 		let ip;
@@ -182,12 +189,12 @@
 		if(host === "") return "";
 		host = String(host);
 		
-		if((/^\[[0-9A-F:.]{2,}\]$/i).test(host) && (ip = normalizeIPv6(host.slice(1, -1))) ) return "["+ip+"]";	//it's a valid IPv6 address
+		if((/^\[.*\]$/i).test(host) && (ip = normalizeIPv6(host.slice(1, -1))) ) return "["+ip+"]";	//it's a valid IPv6 address
 		
-		if(!(/^(?:[a-z0-9-._~!$&'()*+,;=]|%[0-9A-F]{2})*$/i).test(host)) return null;	//contains invalid characters
+		if(!(/^(?:[0-9a-z!$&'()*+,\-.;=_~]|%[0-9A-F]{2})*$/i).test(host)) return null;	//contains invalid characters
 		
-		//decode percent encodings of valid characters
-		host = host.replace(/%(2[146-9A-E]|3\d|3[BD]|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
+		//decode percent encodings of unreserved characters: DIGIT ALPHA -._~
+		host = host.replace(/%(2[DE]|3\d|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
 		
 		if( (ip = normalizeIPv4(host)) ) return ip;	//it's a valid IPv4 address
 		
@@ -199,13 +206,23 @@
 		
 	};
 	
-	//converts an obscured host to a more readable one; only accepts IP addresses and DNS domain names as valid
-	//returns null if it's not valid
-	//this does not support internationalized domain names (IDNs) (RFC 3490)
-	//see: RFC 3986   http://tools.ietf.org/html/rfc3986#section-3.2.2
-	//     RFC 2181   http://tools.ietf.org/html/rfc2181#section-11
-	//     RFC 1123   https://tools.ietf.org/html/rfc1123#page-13
-	//     RFC 3490   https://tools.ietf.org/html/rfc3490
+	/**
+	 * Converts an obscured host to a more readable one. Only DNS domains or IPs are deemed valid.
+	 * 
+	 * ParseURI.domain(host)
+	 * 
+	 * @param {string} host
+	 * @return {object} - Object containing the host and its parts. Null if the host is invalid. Possible members:
+	 *   {string} .host - The normalized domain name or IP.
+	 *   {string} .ip
+	 *   {string} .ipv4
+	 *   {string} .ipv6
+	 *   {array} .labels - Array of the domain name's labels.
+	 * 
+	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986#section-3.2.2
+	 *      RFC 2181   https://tools.ietf.org/html/rfc2181#section-11
+	 *      RFC 1123   https://tools.ietf.org/html/rfc1123#section-2
+	 */
 	function normalizeDNSHost(host){
 		
 		host = normalizeHost(host);
@@ -213,8 +230,9 @@
 		
 		if((/[^a-z0-9:\[\].-]/i).test(host)) return null;	//contains invalid characters
 		
-		if(/^\d+(\.\d+){3}$/.test(host))	//it's an IPv4 address
-			return { host:host, ip:host, ipv4:host, ipv6:"::ffff:"+v4to6(host) };
+		if(/^\d+(\.\d+){3}$/.test(host)){	//it's an IPv4 address
+			return { host:host, ip:host, ipv4:host, ipv6:"::ffff:"+host /*ipv6:"::ffff:"+v4to6(host)*/ };
+		}
 		if(host[0] === "["){	//it's an IPv6 address
 			let ipv6 = host.slice(1, -1),
 				ipv4 = v6to4(ip);
@@ -223,37 +241,57 @@
 		
 		if(host.length > 255) return null;	//too long for a domain name
 		
-		if((/^(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\1(?:\.(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\2)*$/i).test(host))	//it's a domain name
+		if((/^(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\1(?:\.(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\2)*$/i).test(host)){	//it's a domain name
 			return { host:host, labels:host.split(".") };
+		}
 		
 		return null;	//invalid
 		
 	};
 	
-	//converts the four 8-bit decimal values of a normalized IPv4 address to the two low-order 16-bit hexadecimal values of an IPv6 address
-	//see: RFC 4291   http://tools.ietf.org/html/rfc4291#section-2.5.5
-	//     RFC 5952   http://tools.ietf.org/html/rfc5952#section-5
+	/**
+	 * Converts the four 8-bit decimal values of a normalized IPv4 address to the two low-order 16-bit hexadecimal values of an IPv6 address.
+	 * 
+	 * @param {string} ip - Normalized IPv4 address.
+	 * @return {string} - Two 16-bit hexadecimal values representing the IPv4 portion of an IPv6 address.
+	 * 
+	 * See: RFC 4291   https://tools.ietf.org/html/rfc4291#section-2.5.5
+	 */
 	function v4to6(ip){
 		ip = ip.split(".");
 		return ((ip[0]*256 + ip[1]*1).toString(16) + ":" + (ip[2]*256 + ip[3]*1).toString(16)).toLowerCase();
 	}
 	
-	//converts a normalized IPv6 address to the four 8-bit decimal values of an IPv4 address, or undefined if it can't be converted
+	/**
+	 * Converts a normalized IPv6 address to the four 8-bit decimal values of an IPv4 address, if possible.
+	 * 
+	 * @param {string} ip - Normalized IPv6 address.
+	 * @return {string} - IPv4 address. Undefined if it can't be converted.
+	 * 
+	 * See: RFC 4291   https://tools.ietf.org/html/rfc4291#section-2.5.5
+	 */
 	function v6to4(ip){
 		if(!/^::ffff:[0-9A-F]+:[0-9A-F]+$/i.test(ip)) return void 0;	//can't be converted to IPv4
+		function hexToDec(hexField){
+			let h = 1*("0x"+hexField),
+				b = h%256,
+				a = (h-b)/256;
+			return a+"."+b;
+		}
 		ip = /^::ffff:(.+):(.+)$/i.exec(ip);
-		let h = 1*("0x"+ip[1]),
-			b = h%256,
-			a = (h-b)/256,
-			result = a+"."+b+".";
-		h = 1*("0x"+ip[2]);
-		b = h%256;
-		a = (h-b)/256;
-		return result += a+"."+b;
+		return hexToDec(ip[1]) + "." + hexToDec(ip[2]);
 	}
 	
-	//see: http://www.pc-help.org/obscure.htm
-	//     http://en.wikipedia.org/wiki/IPv4#Address_representations
+	/**
+	 * Normalizes an IPv6 address.
+	 * 
+	 * @param {string} ip - IPv6 address.
+	 * @param {boolean} [useMixedNotation] - Mix hexadecimal and dotted-decimal notations to represent an IPv4-mapped IPv6 address. Default is true (recommended per RFC 5952, section 5).
+	 * @return {string} - Normalized IPv6 address. Null if it's invalid.
+	 * 
+	 * See: How to Obscure Any URL   http://www.pc-help.org/obscure.htm
+	 *      Wikipedia: IPv4, Address representations   http://en.wikipedia.org/wiki/IPv4#Address_representations
+	 */
 	function normalizeIPv4(ip){
 		
 		if(!(/^(?=(\d+|0x[0-9A-F]+))\1(?:\.(?=(\d+|0x[0-9A-F]+))\2){0,3}$/i).test(ip)) return null;	//invalid IP address
@@ -272,7 +310,7 @@
 				val = 1*parts[i];
 			}
 			
-			//if this is the last part and it's a dword
+			//if this is the last part and it's a dword (unsigned 32-bit integer)
 			//e.g., in an IP of 1192362298 or 71.1179962 or 71.18.314
 			if(i === parts.length-1 && i < 3){
 				//convert dword to decimal parts
@@ -294,14 +332,23 @@
 		
 	};
 	
-	//see: RFC 4291   http://tools.ietf.org/html/rfc4291
-	//     RFC 5952   http://tools.ietf.org/html/rfc5952#section-4
-	//     RFC 5952   http://tools.ietf.org/html/rfc5952#section-5
-	function normalizeIPv6(ip, keepEmbeddedIPv4){
-		
-		if(!(/^[0-9A-F:.]{2,}$/i).test(ip)) return null;	//invalid IP address
+	/**
+	 * Normalizes an IPv6 address.
+	 * 
+	 * @param {string} ip - IPv6 address.
+	 * @param {boolean} useMixedNotation - Mix hexadecimal and dot-decimal notations to represent IPv4-mapped IPv6 addresses. Default is true (recommended per RFC 5952, section 5).
+	 * @return {string} - Normalized IPv6 address. Null if it's invalid.
+	 * 
+	 * See: RFC 4291   https://tools.ietf.org/html/rfc4291
+	 *      RFC 5952   https://tools.ietf.org/html/rfc5952#section-4
+	 *                 https://tools.ietf.org/html/rfc5952#section-5
+	 */
+	function normalizeIPv6(ip, useMixedNotation){
 		
 		if(!ip) return null;
+		if(useMixedNotation === void 0) useMixedNotation = true;	//default is true
+		
+		if(!(/^[0-9A-F:.]{2,}$/i).test(ip)) return null;	//invalid IP address
 		
 		ip = ip.toLowerCase().split("::");	//split the IP at "::" (if it's used)
 		if(ip.length > 2) return null;	//invalid IP; "::" used multiple times
@@ -321,11 +368,11 @@
 					resultLeft.push(fieldsLeft[i]);
 				}
 				else if(!compacted && i === 6 && fieldsLeft.length === 7 && /^\d+(\.\d+){3}$/.test(fieldsLeft[i]) ){	//last part of entire IP is a ver. 4 IP
-					if(keepEmbeddedIPv4 && /^(0+:){5}(0+|ffff)$/.test(resultLeft.join(":"))){	//well-known prefix that distinguishes an embedded IPv4
+					if(useMixedNotation && /^(0+:){5}(0+|ffff)$/.test(resultLeft.join(":"))){	//well-known prefix that distinguishes an embedded IPv4
 						includesIPv4 = true;
 						resultLeft.push(normalizeIPv4(fieldsLeft[i]));
 					}
-					else{	//no recognized prefix for IPv4; convert it to IPv6
+					else{	//no recognized prefix for IPv4, or don't use mixed notation; convert it to IPv6
 						fieldsLeft[i] = v4to6(normalizeIPv4(fieldsLeft[i]));	//convert field to a pair of IPv6 fields
 						resultLeft.push(/^[^:]+/.exec(fieldsLeft[i])[0]);
 						resultLeft.push(/:(.+)/.exec(fieldsLeft[i])[1]);
@@ -342,12 +389,12 @@
 						resultRight.push(fieldsRight[i]);
 					}
 					else if(i === fieldsRight.length-1 && /^\d+(\.\d+){3}$/.test(fieldsRight[i]) ){	//last part of entire IP is a ver. 4 IP
-						if(keepEmbeddedIPv4 && ( ( /^((0+:)*0+)?$/.test(resultLeft.join(":")) && /^((0+:)*(0+|ffff))?$/.test(resultRight.join(":")) ) ||
+						if(useMixedNotation && ( ( /^((0+:)*0+)?$/.test(resultLeft.join(":")) && /^((0+:)*(0+|ffff))?$/.test(resultRight.join(":")) ) ||
 						 /^(0+:){5}(0+|ffff)$/.test(resultLeft.join(":")) )){	//well-known prefix that distinguishes an embedded IPv4
 							includesIPv4 = true;
 							resultRight.push(normalizeIPv4(fieldsRight[i]));
 						}
-						else{	//no recognized prefix for IPv4; convert it to IPv6
+						else{	//no recognized prefix for IPv4, or don't use mixed notation; convert it to IPv6
 							fieldsRight[i] = v4to6(normalizeIPv4(fieldsRight[i]));	//convert field to a pair of IPv6 fields
 							resultRight.push(/^[^:]+/.exec(fieldsRight[i])[0]);
 							resultRight.push(/:(.+)/.exec(fieldsRight[i])[1]);
@@ -387,20 +434,30 @@
 			ip = ip.replace(rxp, "::");
 		}
 		
+		let v4;
+		if(useMixedNotation && !includesIPv4 && (v4 = v6to4(ip))){
+			//This is a hexadecimal representation of an IPv4 address. Convert the low-order 32 bits to mixed notation.
+			ip = "::ffff:"+v4;
+		}
+		
 		return ip;
 		
 	};
 	
-	//converts an obscured path to a more readable one
+	/**
+	 * Converts and obscured path to a more readable one.
+	 * 
+	 * @param {string} path
+	 * @return {string}
+	 * 
+	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986#section-3.3
+	 */
 	function normalizePath(path){
 		
 		if(!path && path !== 0) return "";
 		
-		//decode letters & numbers
-		path = path.replace(/%(3\d|[46][1-9A-F]|[57][0-9A])/ig, function (match, p1){ return String.fromCharCode(parseInt(p1.toUpperCase(), 16)); });
-		
-		//decode allowed symbols: -._~!$&'()*+,;=:@/
-		path = path.replace(/%(2[146-9A-F]|3[ABD]|40|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1.toUpperCase(), 16)); });
+		//decode percent encodings of unreserved characters: DIGIT ALPHA -._~
+		host = host.replace(/%(2[DE]|3\d|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
 		
 		//make percent encodings upper case
 		path = path.replace(/%(..)/ig, function (match, p1){ return "%"+p1.toUpperCase(); });
@@ -451,7 +508,7 @@
 	//	.headers	//array of other headers besides the above (each header is an object {name, value})
 	//returns null if it's not a valid mailto URI or there is no destination
 	//only includes valid email addresses; the rest are discarded
-	//see: RFC 6068   http://tools.ietf.org/html/rfc6068
+	//see: RFC 6068   https://tools.ietf.org/html/rfc6068
 	function parseMailto(parts){
 		
 		if(!/^(?:[a-z0-9-._~!$'()*+,:@]|%[0-9A-F]{2})*$/i.test(parts.path) || !/^(?:[a-z0-9-._~!$'()*+,;:@]|%[0-9A-F]{2})*$/i.test(parts.query)){
@@ -579,9 +636,10 @@
 	};
 	
 	/**
-	 * Normalizes a single email address (mailbox) and splits it into its parts.
+	 * Normalizes a single email address (or mailbox) and splits it into its parts.
 	 * 
 	 * ParseURI.emailAddress(address)
+	 * 
 	 * @param {string} address - email address or mailbox (mailbox example: "John Doe" <john.doe@example.com> )
 	 * @return {object} - Object containing the mailbox and its parts. Null if it's invalid.
 	 *   {string} .full - If there is a display name: "display name" <local@domain>
@@ -595,8 +653,8 @@
 	 * Does not parse groups (e.g., a distribution list).
 	 * Unfolds whitespace and removes comments.
 	 * Does not consider the 998 character limit per line.
-	 * See: RFC 5322   http://tools.ietf.org/html/rfc5322
-	 *      RFC 5321   http://tools.ietf.org/html/rfc5321#section-4.1.2
+	 * See: RFC 5322   https://tools.ietf.org/html/rfc5322
+	 *      RFC 5321   https://tools.ietf.org/html/rfc5321#section-4.1.2
 	 *      Wikipedia: Email address   https://en.wikipedia.org/wiki/Email_address
 	 */
 	function parseEmailAddress(address){
@@ -930,6 +988,7 @@
 	// allowedSchemes	a string or array of strings listing accepted schemes; if not specified, any scheme is allowed
 	// domain			host name (and optionally port) to use if an http/https URI is relative; current page's domain and port by default
 	//if the string does not have a scheme, it will be assumed that it's meant to be that of the current page (e.g., if str is a relative URL)
+	//https://tools.ietf.org/html/rfc3986#section-4.1
 	//returns null if it can't be fixed
 	function fixHyperlink(str, allowedSchemes, domain){
 		
