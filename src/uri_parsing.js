@@ -93,6 +93,15 @@
 			)?
 			$
 		*/
+		
+		/*Characters:
+			unreserved: [A-Za-z0-9-._~]
+			reserved: gen-delims / sub-delims
+			gen-delims: [:\/?#\[\]@]
+			sub-delims: [!$&'()*+,;=]
+			pct-encoded: %[0-9A-Fa-f]{2}
+		*/
+		
 		let parts = rxp.exec(uri);
 		if(!parts) return null;	//invalid URI
 		
@@ -154,7 +163,7 @@
 					uri: uri,
 					scheme: scheme,
 					path: path,
-					query: parseQuery(query);
+					query: parseQuery(query)
 				});
 			
 		}
@@ -186,6 +195,7 @@
 	function normalizeHost(host){
 		
 		if(host === "") return "";
+		if(host === void 0) return null;
 		host = ""+host;
 		
 		let ip;
@@ -295,6 +305,7 @@
 	 */
 	function normalizeIPv4(ip){
 		
+		if(ip === void 0) return null;
 		ip = ""+ip;
 		
 		if(!(/^(?=(\d+|0x[0-9A-F]+))\1(?:\.(?=(\d+|0x[0-9A-F]+))\2){0,3}$/i).test(ip)) return null;	//invalid IP address
@@ -348,6 +359,7 @@
 	 */
 	function normalizeIPv6(ip, useMixedNotation){
 		
+		if(ip === void 0) return null;
 		ip = ""+ip;
 		if(useMixedNotation === void 0) useMixedNotation = true;	//default is true
 		
@@ -459,10 +471,11 @@
 	function normalizePath(path){
 		
 		if(path === "") return "";
+		if(path === void 0) return "";
 		path = ""+path;
 		
 		//decode percent encodings of unreserved characters: DIGIT ALPHA -._~
-		host = host.replace(/%(2[DE]|3\d|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
+		path = path.replace(/%(2[DE]|3\d|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
 		
 		//make percent encodings upper case
 		path = path.replace(/%(..)/ig, function (match, p1){ return "%"+p1.toUpperCase(); });
@@ -482,6 +495,7 @@
 	 */
 	function normalizeQuery(queryString){
 		
+		if(queryString === void 0) return "";
 		queryString = ""+queryString;
 		
 		//decode percent encodings of unreserved characters: DIGIT ALPHA -._~
@@ -501,7 +515,7 @@
 	 */
 	function parseQuery(queryString){
 		
-		if(queryString === "") return [];
+		if(queryString === "" || queryString === void 0) return [];
 		queryString = ""+queryString;
 		
 		queryString = normalizeQuery(queryString);
@@ -701,6 +715,7 @@
 	function parseEmailAddress(address){
 		
 		//renaming the variable to avoid confusion with the specs (this function does not parse groups)
+		if(address === void 0) return null;
 		let mailbox = ""+address;
 		address = void 0;
 		
@@ -1033,6 +1048,7 @@
 			parts = {},
 			ret;
 		
+debugger;
 		//get scheme
 		let scheme = (/^([a-z][a-z0-9+.-]*):/i).exec(href);
 		if(scheme){
@@ -1049,7 +1065,7 @@
 			
 			if(/^\/\//.test(href)){	//href is relative to the scheme, and should start with the authority
 				
-				href.slice(2);
+				href = href.slice(2);
 				parts.userinfo = "";
 				parts.host = "";
 				parts.port = "";
@@ -1068,7 +1084,7 @@
 				
 				ret = /^\[([a-f0-9:.\]]*)\]/i.exec(href);
 				if(ret){	//possibly valid IPv6
-					ret = normalizeIPv6(ret[1]);
+					ret = normalizeIPv6(ret[1]).host;
 					if(ret){	//valid IPv6
 						parts.host = "["+ret+"]";
 						href = href.slice(ret[0].length);
@@ -1080,7 +1096,7 @@
 				else{
 					ret = /^([^:\/]*)([:\/]|$)/.exec(href);
 					if(ret){	//possible host
-						parts.host = normalizeDNSHost(ret[1]);
+						parts.host = normalizeDNSHost(ret[1]).host;
 						if(parts.host){	//valid host
 							href = href.slice(ret[1].length);
 						}
@@ -1104,7 +1120,7 @@
 					return null;
 				}
 				
-				ret = ParseURI(parts.scheme + (parts.userinfo?parts.userinfo+"@":"") + parts.host + (parts.port?":"+parts.port:"") + href);
+				ret = ParseURI(parts.scheme+"//" + (parts.userinfo?parts.userinfo+"@":"") + parts.host + (parts.port?":"+parts.port:"") + href);
 				if(ret) return ret.uri;
 				
 				//get path
@@ -1143,71 +1159,8 @@
 			
 		}
 		
-		return null;
+		return "TODO";
 		
-		
-		
-		
-		
-		
-		
-		
-		
-		//percent-encode illegal characters
-		str = str.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@\/\[\]%?#]|%(?![0-9A-F]{2}))+/ig, function (match){
-				return encodeURIComponent(match);
-			});
-		let i = str.search(/\?/);	//index of first question mark
-		let j = str.search(/#/);	//index of first number sign
-		if(j >= 0 && j < i){	//no query; only a fragment
-			str = str.slice(0,j+1) + str.slice(j+1).replace(/#/g, "%23");	//percent-encode illegal number signs
-		}
-		else if(i >= 0){	//query
-			let tmp = j >= 0 ? str.slice(j) : "";
-			str = str.slice(0,i+1) + str.slice(i+1,j).replace(/\?/g, "%3F");	//percent-encode illegal question marks
-			if(tmp){	//fragment
-				str = str + "#" + tmp.slice(1).replace(/#/g, "%23");	//percent-encode illegal number signs
-			}
-		}
-		
-		//fix & normalize
-		let lnk;
-		if(scheme === "http" || scheme === "https"){
-			if(!(new RegExp("^"+scheme+"://", "i")).test(str)){
-				str = str.replace(/\[/g, "%5B").replace(/\]/g, "%5D");
-				if(str.substring(0,2) === "//"){ 	//relative to the scheme
-					lnk = parseHttp(scheme+"://"+str);
-				}
-				else if(str[0] === "/" && domain){ 	//path (relative to root)
-					lnk = parseHttp(scheme+"://"+domain+port+str);
-				}
-				else if(domain){
-					lnk = parseHttp(scheme+"://"+domain+port+"/"+str);
-				}
-				else{
-					return null;	//invalid domain
-				}
-			}
-			else{
-				lnk = parseHttp(str);
-				if(!lnk){
-					lnk = parseHttp(str.replace(/\[/g, "%5B").replace(/\]/g, "%5D"));
-					str = str.substring(scheme.length+3).replace(/^([^/]*)(?:$|(\/.*))/, function (match, p1, p2){
-						return p1 + p2.replace(/\[/g, "%5B").replace(/\]/g, "%5D");
-					});
-					lnk = parseHttp(scheme+"://"+str);
-				}
-			}
-		}
-		else if(scheme === "mailto"){
-			lnk = parseMailto(str.replace(/\//g, "%2F"));
-		}
-		else{
-			lnk = parseURI(str.replace(/\[/g,"%5B").replace(/\]/g,"%5D"));
-		}
-		
-		if(!lnk) return null;	//can't be fixed
-		return lnk.uri;	//fixed & normalized
 	};
 	
 	this.ParseURI = ParseURI;
