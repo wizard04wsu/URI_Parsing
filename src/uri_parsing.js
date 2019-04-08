@@ -42,16 +42,19 @@
 	 *   {string} .uri - The normalized URI.
 	 *   {string} .scheme
 	 *   {string} .authority - For non-http/https/mailto URIs. Empty string if there isn't an authority.
-	 *   {object} .authority - For http or https URIs. Coerces to a string of the entire authority.
+	 *   {object} .authority - For http or https URIs.
+	 *     {function} .toString - Returns the authority as a string.
 	 *     {string} .authority.userinfo
-	 *     {string} .authority.host - Coerces to a string.
+	 *     {string} .authority.host
+	 *       {function} .toString - Returns the host as a string.
 	 *       {array} .authority.host.labels - Array of labels within a domain name. Undefined if it's an IP.
 	 *       {string} .authority.host.ip - IP address (IPv4 if possible).
 	 *       {string} .authority.host.ipv4 - IPv4 version of the IP.
 	 *       {string} .authority.host.ipv6 - IPv6 version of the IP.
 	 *     {string} .authority.port
 	 *   {string} .path - For non-mailto URIs.
-	 *   {array} .query - For non-mailto URIs. An array of decoded name/value pairs (each pair is an object {name, value}). Coerces to a string of the entire query.
+	 *   {array} .query - For non-mailto URIs. An array of decoded name/value pairs (each pair is an object {name, value}).
+	 *     {function} .toString - Returns the normalized query as a string.
 	 *   {string} .fragment - For non-mailto URIs.
 	 *   {array} .to - For mailto URIs. Array of valid email addresses.
 	 *   {array} .cc - For mailto URIs. Array of valid email addresses.
@@ -509,7 +512,8 @@
 	 * ParseURI.query(queryString)
 	 * 
 	 * @param {string} queryString
-	 * @return {array} - Array of name/value pairs (each pair is an object {name, value}). Coerces to a string of the normalized query string.
+	 * @return {array} - Array of name/value pairs (each pair is an object {name, value}).
+	 *   {function} .toString - Returns the normalized query as a string.
 	 * 
 	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986#section-3.4
 	 */
@@ -1035,25 +1039,146 @@
 		
 	};
 	
-	//attempts to fix a URI (if needed) and normalizes it
-	// allowedSchemes	a string or array of strings listing accepted schemes; if not specified, any scheme is allowed
-	// domain			host name (and optionally port) to use if an http/https URI is relative; current page's domain and port by default
-	//if the string does not have a scheme, it will be assumed that it's meant to be that of the current page (e.g., if str is a relative URL)
-	//https://tools.ietf.org/html/rfc3986#section-4.1
-	//returns null if it can't be fixed
+	/**
+	 * Attempts to fix a URI if it's invalid. It refers to the current page's location if the scheme or authority are missing, and encodes invalid characters.
+	 * 
+	 * @param {string} href - URI or relative reference to analyze and fix.
+	 * @return {string} - Fixed and normalized URI. Undefined if it can't be fixed.
+	 * 
+	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986#section-4.2
+	 */
 	function fixHyperlink(href){
 		
-		let location = (window && window.location) ? window.location : {},
-			hyperlink = href,
-			parts = {},
-			ret;
+		let ret = ParseURI(href);
+		if(ret) return ret.uri;	//URI is valid
 		
-debugger;
+		let given = href,
+			schemeFound,
+			location = (window && window.location) ? window.location : {},
+			parts = {
+				scheme: "",	//including the colon
+				authority = "",
+				userinfo: "",
+				host: "",
+				port: "",
+				path: "",
+				query: "",
+				fragment: ""
+				};
+		
+		function getWindowAuthority(){
+			if(!schemeFound && location.hostname){
+				parts.userinfo = location.username;
+				if(location.password) parts.userinfo += ":"+location.password;
+				parts.host = location.hostname;
+				parts.port = location.port;
+				parts.authority = (parts.userinfo?parts.userinfo+"@":"") + parts.host + (parts.port?":"+parts.port:"");
+			}
+		}
+		
+		function getAuthority(href){
+			
+			let given = href;
+			
+			function notFound(){
+				getWindowAuthority();
+				return given;
+			}
+			
+			//get userinfo
+			
+			ret = /^([^@:\/\[]*)@/.exec(href);
+			if(ret){	//userinfo
+				parts.userinfo = ret[1];
+				//percent-encode illegal characters
+				parts.userinfo = parts.userinfo.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
+				href = href.slice(ret[0].length);
+			}
+			
+			//get host
+			
+			ret = /^\[([a-f0-9:.\]]*)\](?=[:\/?#]|$)/i.exec(href);
+			if(ret){	//possibly valid IPv6
+				ret = normalizeIPv6(ret[1]).host;
+				if(ret){	//valid IPv6
+					parts.host = "["+ret+"]";
+					href = href.slice(ret[0].length);
+				}
+				else{
+					return notFound();
+				}
+			}
+			else{
+				ret = /^([^:\/]*)(?=[:\/?#]|$)/.exec(href);
+				if(ret){	//possible host
+					parts.host = normalizeDNSHost(ret[1]).host;
+					if(parts.host){	//valid host
+						href = href.slice(ret[0].length);
+					}
+					else{
+						return notFound();
+					}
+				}
+				else{
+					return notFound();
+				}
+			}
+			
+			//get port
+			
+			ret = /^:(\d*)(?=[\/?#]|$)/.exec(href);
+			if(ret){	//port
+				parts.port = ret[1];
+				href = href.slice(ret[0].length);
+			}
+			else if(href[0] === ":"){
+				return  notFound();
+			}
+			
+			parts.authority = (parts.userinfo?parts.userinfo+"@":"") + parts.host + (parts.port?":"+parts.port:"");
+			return href;	//valid authority found; return remainder
+			
+		}
+		
+		function getPQF(href){
+			
+			//get path
+			
+			ret = /^[^?#]*/g.exec(href)[0];
+			href = href.slice(ret.length);
+			
+			//percent-encode illegal characters
+			ret = ret.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
+			
+			parts.path += normalizePath(ret);
+			
+			//get query
+			
+			ret = /^(\?[^#]*)?/.exec(href);
+			href = href.slice(ret.length);
+			
+			//percent-encode illegal characters
+			ret = ret.slice(1).replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@\/?%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
+			
+			parts.query = normalizeQuery(ret);
+			
+			//get fragment
+			
+			if(href){
+				//percent-encode illegal characters
+				href = href.slice(1).replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@\/?%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
+				
+				parts.fragment = normalizeFragment(ret);
+			}
+			
+		}
+		
 		//get scheme
 		let scheme = (/^([a-z][a-z0-9+.-]*):/i).exec(href);
 		if(scheme){
 			scheme = scheme[0].toLowerCase();
 			href = href.slice(scheme.length);
+			schemeFound = true;
 		}
 		else{
 			scheme = location.protocol || "http:";
@@ -1062,104 +1187,34 @@ debugger;
 		parts.scheme = scheme;
 		
 		if(/^https?:$/.test(scheme)){
-			
-			if(/^\/\//.test(href)){	//href is relative to the scheme, and should start with the authority
-				
-				href = href.slice(2);
-				parts.userinfo = "";
-				parts.host = "";
-				parts.port = "";
-				
-				//get userinfo
-				
-				ret = /^([^@:\/\[]*)@/.exec(href);
-				if(ret){	//userinfo
-					parts.userinfo = ret[1];
-					//percent-encode illegal characters
-					parts.userinfo = parts.userinfo.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
-					href = href.slice(ret[0].length);
-				}
-				
-				//get host
-				
-				ret = /^\[([a-f0-9:.\]]*)\]/i.exec(href);
-				if(ret){	//possibly valid IPv6
-					ret = normalizeIPv6(ret[1]).host;
-					if(ret){	//valid IPv6
-						parts.host = "["+ret+"]";
-						href = href.slice(ret[0].length);
-					}
-					else{
-						return null;
-					}
-				}
-				else{
-					ret = /^([^:\/]*)([:\/]|$)/.exec(href);
-					if(ret){	//possible host
-						parts.host = normalizeDNSHost(ret[1]).host;
-						if(parts.host){	//valid host
-							href = href.slice(ret[1].length);
-						}
-						else{
-							return null;
-						}
-					}
-					else{
-						return null;
-					}
-				}
-				
-				//get port
-				
-				ret = /^:(\d*)(?=\/|$)/.exec(href);
-				if(ret){	//port
-					parts.port = ret[1];
-					href = href.slice(ret[0].length);
-				}
-				else if(href[0] === ":"){
-					return null;
-				}
-				
-				ret = ParseURI(parts.scheme+"//" + (parts.userinfo?parts.userinfo+"@":"") + parts.host + (parts.port?":"+parts.port:"") + href);
-				if(ret) return ret.uri;
-				
-				//get path
-				
-				//TODO
-				
-				//get query
-				
-				//TODO
-				
-				//get fragment
-				
-				//TODO
-				
+			if(/^\/\//.test(href)){	//it has an authority
+				href = getAuthority(href.slice(2)) || "/";
 			}
-			else if(href[0] === "/"){	//href is relative to the authority
-				
-				//TODO
-				
+			else{
+				getWindowAuthority();
 			}
-			else{	//href is relative to the page
-				
-				//TODO
-				
-			}
-			
-		}
-		else if(scheme === "mailto:"){
-			
-			//TODO
-			
+			if(!parts.authority) return;	//can't fix it
 		}
 		else{
-			
-			//TODO
-			
+			if(/^\/\//.test(href)){	//it has an authority
+				href = getAuthority(href.slice(2));
+				if(!parts.authority) return;	//can't fix it
+			}
 		}
 		
-		return "TODO";
+		getPQF();	//get path, query, and fragment
+		
+		ret = ParseURI(parts.scheme + (parts.authority ? "//"+parts.authority : "") + parts.path + "?"+parts.query + "#"+parts.fragment);
+		if(ret) return ret.uri;	//fixed URI
+		
+		
+		if(!schemeFound && /^[^:\/?#]*:/.test(given)){
+		//broken hyperlink is possibly a relative path with the first segment including a colon
+			//precede it with a dot-segment and try again
+			return fixHyperlink("./"+href);
+		}
+		
+		return;	//can't fix it
 		
 	};
 	
