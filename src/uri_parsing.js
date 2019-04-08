@@ -132,7 +132,7 @@
 			
 			port = port || (scheme === "http" ? "80" : "443");
 			authority = (userinfo ? userinfo+"@" : "") + host.host + ((scheme==="http" && port==="80") || (scheme==="https" && port==="443") ? "" : ":"+port);
-			path = path || "/";
+			path = removeDotSegments(path) || "/";
 			let queryObj = parseQuery(query);
 			
 			uri = scheme+"://"+authority + path + (query ? "?"+queryObj : "") + (fragment ? "#"+fragment : "");
@@ -488,6 +488,53 @@
 	};
 	
 	/**
+	 * Removes dot-segments from a relative reference.
+	 * 
+	 * @param {string} path
+	 * @param {boolean} isPartial - True if the path might be relative to the current document (i.e., it was not merged with the base URI path).
+	 * @return {string}
+	 * 
+	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986#section-4.2
+	 *                 https://tools.ietf.org/html/rfc3986#section-5.2.4
+	 */
+	function removeDotSegments(path, isPartial){
+		
+		if(path === void 0) return "";
+		path = ""+path;
+		
+		let ret;
+		while(path){
+			if(isPartial && /^\.(?=[?#]|$)/.test(path)){	//partial path consists only of "."
+				path = path.slice(1);
+			}
+			else if(!isPartial && (ret = /^\.\.?(?=[?#]|$)/.exec(path))){	//full path consists only of "." or ".."
+				path = path.slice(ret[0].length);
+			}
+			else if(isPartial && /^(\.\/)+/.test(path)){	//partial path begins with "./"
+				path = path.slice(2);
+			}
+			else if(!isPartial && (ret = /^(\.\.?\/)+/.exec(path))){	//full path begins with "../" or "./"
+				path = path.slice(ret[0].length);
+			}
+			else if(/(\/\.)+(?=[\/?#]|$)\/?/.test(path)){	//path contains "/./" or ends with "/."
+				path = path.replace(/(\/\.)+(?=[\/?#]|$)\/?/, "/");
+			}
+			else if((ret = /^(\/\.\.)+(?=[\/?#]|$)\/?/.exec(path))){	//path begins with "/../" or consists only of "/.."
+				path = "/"+path.slice(ret[0].length);
+			}
+			else if(/\/(?!\.\.([\/?#]|$))[^\/]*\/\.\.(?=[\/?#]|$)\/?/.test(path)){	//path contains "/non-dot-segment/../" or ends with "/non-dot-segment/.."
+				path = path.replace(/\/(?!\.\.([\/?#]|$))[^\/]*\/\.\.(?=[\/?#]|$)\/?/, "/");
+			}
+			else{
+				break;
+			}
+		}
+		
+		return path;
+		
+	}
+	
+	/**
 	 * Converts and obscured query string to a more readable one.
 	 * 
 	 * @param {string} queryString
@@ -547,15 +594,15 @@
 	 * 
 	 * @param {object} parts - Object containing the URI, scheme, path, and query object.
 	 * @return {object} - Object containing the following. Null if the URI is invalid or there is no valid destination.
-	 *   {string} uri - normalized URI
-	 *   {string} scheme - "mailto"
-	 *   {string} path
-	 *   {array} to
-	 *   {array} cc
-	 *   {array} bcc
-	 *   {string} subject - Multiple "subject" headers are combined.
-	 *   {string} body - Multiple "body" headers are combined.
-	 *   {array} headers - Array containing any additional headers (each header is an object {name, value}).
+	 *   {string} .uri - normalized URI
+	 *   {string} .scheme - "mailto"
+	 *   {string} .path
+	 *   {array} .to
+	 *   {array} .cc
+	 *   {array} .bcc
+	 *   {string} .subject - Multiple "subject" headers are combined.
+	 *   {string} .body - Multiple "body" headers are combined.
+	 *   {array} .headers - Array containing any additional headers (each header is an object {name, value}).
 	 * 
 	 * Invalid destinations are discarded.
 	 * 
@@ -1043,19 +1090,23 @@
 	 * Attempts to fix a URI if it's invalid. It refers to the current page's location if the scheme or authority are missing, and encodes invalid characters.
 	 * 
 	 * @param {string} href - URI or relative reference to analyze and fix.
-	 * @return {string} - Fixed and normalized URI. Undefined if it can't be fixed.
+	 * @return {object} - Null if the URI can't be fixed. Possible members:
+	 *   {function} .toString - Returns the fixed and normalized URI as a string.
+	 *   {string} .uri - Fixed and normalized URI.
+	 *   {string} .networkPathReference - Relative reference starting with "//" (relative to the scheme).
+	 *   {string} .absolutePathReference - Relative reference starting with a single "/" (relative to the root).
+	 *   {string} .relativePathReference - Relative reference not starting with a "/" (relative to the current document).
+	 *   {string} .sameDocumentReference - The fragment, including the "#".
 	 * 
 	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986#section-4.2
 	 */
 	function fixHyperlink(href){
 		
-		if(!href) return;
-		
-		let ret = ParseURI(href);
-		if(ret) return ret.uri;	//URI is valid
+		if(!href) return null;
 		
 		let given = href,
 			schemeFound,
+			authorityFound,
 			location = (window && window.location) ? window.location : {},
 			parts = {
 				scheme: "",	//including the colon
@@ -1063,10 +1114,28 @@
 				userinfo: "",
 				host: "",
 				port: "",
-				path: "",
+				//relativePath: "",
+				//path: "",
 				query: "",
 				fragment: ""
 				};
+		
+		let ret = ParseURI(href);
+		if(ret) return valid(ret);	//URI is valid
+		
+		function valid(parsed){
+			let result = {},
+				qf = (""+parsed.query?"?"+parsed.query:"")+(parsed.fragment?"#"+parsed.fragment:"");
+			
+			result.uri = parsed.uri;
+			defineProperty(result, "toString", function (){ return result.uri; }, true, false, true);
+			if(parsed.authority) result.networkPathReference = "//"+parsed.authority+parsed.path+qf;
+			if(parsed.path[0] === "/") result.absolutePathReference = parsed.path+qf;
+			if(parts && parts.relativePath !== void 0) result.relativePathReference = parts.relativePath+qf;
+			if(parsed.fragment) result.sameDocumentReference = "#"+parsed.fragment;
+			
+			return result;
+		}
 		
 		function getWindowAuthority(){
 			if(!schemeFound && location.hostname){
@@ -1075,6 +1144,7 @@
 				parts.host = location.hostname;
 				parts.port = location.port;
 				parts.authority = (parts.userinfo?parts.userinfo+"@":"") + parts.host + (parts.port?":"+parts.port:"");
+				authorityFound = true;
 			}
 		}
 		
@@ -1139,6 +1209,7 @@
 			}
 			
 			parts.authority = (parts.userinfo?parts.userinfo+"@":"") + parts.host + (parts.port?":"+parts.port:"");
+			authorityFound = true;
 			return href;	//valid authority found; return remainder
 			
 		}
@@ -1155,7 +1226,14 @@
 			//percent-encode illegal characters
 			ret = ret.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
 			
-			parts.path += normalizePath(ret);
+			let path = normalizePath(ret);
+			if(!schemeFound && !authorityFound && path[0] !== "/"){
+					parts.relativePath = path;
+					if(location.path !== void 0) parts.path = location.path.replace(/(^|\/)[^\/]*$/, function (match, p1){ return p1+path; });
+			}
+			else{
+				parts.path = path;
+			}
 			
 			//get query
 			
@@ -1187,7 +1265,7 @@
 		}
 		else{
 			scheme = location.protocol || "http:";
-			if( (ret = ParseURI(scheme+href)) ) return ret.uri;
+			if( (ret = ParseURI(scheme+href)) ) return valid(ret);
 		}
 		parts.scheme = scheme;
 		
@@ -1198,19 +1276,26 @@
 			else{
 				getWindowAuthority();
 			}
-			if(!parts.authority) return;	//can't fix it
+			if(!parts.authority) return null;	//can't fix it
 		}
 		else{
 			if(/^\/\//.test(href)){	//it has an authority
 				href = getAuthority(href.slice(2));
-				if(!parts.authority) return;	//can't fix it
+				if(!parts.authority) return null;	//can't fix it
 			}
 		}
 		
 		getPQF(href);	//get path, query, and fragment
 		
+		if(parts.path === void 0) return null;	//can't fix it
+		
+		if(/^https?:$/.test(parts.scheme)){
+			parts.path = removeDotSegments(parts.path);
+			parts.relativePath = removeDotSegments(parts.relativePath, true);
+		}
+		
 		ret = ParseURI(parts.scheme + (parts.authority ? "//"+parts.authority : "") + parts.path + "?"+parts.query + "#"+parts.fragment);
-		if(ret) return ret.uri;	//fixed URI
+		if(ret) return valid(ret);	//fixed URI
 		
 		
 		if(!schemeFound && /^[^:\/?#]*:/.test(given)){
@@ -1220,16 +1305,17 @@
 				return fixHyperlink(location.scheme + (parts.authority ? "//"+parts.authority : "") + href);
 			}
 			else{
-				return;	//can't fix it
+				return null;	//can't fix it
 			}
 		}
 		
-		return;	//can't fix it
+		return null;	//can't fix it
 		
 	};
 	
 	this.ParseURI = ParseURI;
 	this.ParseURI.domain = normalizeDNSHost;
+	this.ParseURI.resolveRelativePath = removeDotSegments;
 	this.ParseURI.query = parseQuery;
 	this.ParseURI.emailAddress = parseEmailAddress;
 	this.ParseURI.fixHyperlink = fixHyperlink;
