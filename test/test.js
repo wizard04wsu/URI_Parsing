@@ -33,7 +33,7 @@ console.group("URI assertions");
 for(let i=0, result; i<test.length; i++){
 	result = ParseURI(test[i][0]);
 	if(test[i][1] === null){
-		console.assert(result === null, (i+1)+". "+test[i][0]+" --> "+(result && result.uri));
+		console.assert(result === null, "Parse "+(i+1)+". "+test[i][0]+" --> "+(result && result.uri));
 	}
 	else{
 		console.assert(result && result.uri === test[i][1], "Parse "+(i+1)+":  "+test[i][0]+" --> "+(result ? result.uri : "null"));
