@@ -78,7 +78,7 @@
 				
 				(																			#2 authority
 					(?:(?=((?:[a-z0-9-._~!$&'()*+,;=:]|%[0-9A-F]{2})*))(\3)@)?					#4 userinfo
-					(?=(\[[0-9A-F:.]{2,}\]|(?:[a-z0-9-._~!$&'()*+,;=]|%[0-9A-F]{2})*))\5		#5 host (loose check to allow for IPv6 addresses)
+					(?=(\[[0-9A-F:.]{2,}\]|(?:[a-z0-9-._~!$&'()*+,;=]|%[0-9A-F]{2})*))\5		#5 host (loose check)
 					(?::(?=(\d*))\6)?															#6 port
 				)
 				
@@ -1049,6 +1049,8 @@
 	 */
 	function fixHyperlink(href){
 		
+		if(!href) return;
+		
 		let ret = ParseURI(href);
 		if(ret) return ret.uri;	//URI is valid
 		
@@ -1057,7 +1059,7 @@
 			location = (window && window.location) ? window.location : {},
 			parts = {
 				scheme: "",	//including the colon
-				authority = "",
+				authority: "",
 				userinfo: "",
 				host: "",
 				port: "",
@@ -1087,7 +1089,7 @@
 			
 			//get userinfo
 			
-			ret = /^([^@:\/\[]*)@/.exec(href);
+			let ret = /^([^@:\/\[]*)@/.exec(href);
 			if(ret){	//userinfo
 				parts.userinfo = ret[1];
 				//percent-encode illegal characters
@@ -1099,9 +1101,9 @@
 			
 			ret = /^\[([a-f0-9:.\]]*)\](?=[:\/?#]|$)/i.exec(href);
 			if(ret){	//possibly valid IPv6
-				ret = normalizeIPv6(ret[1]).host;
+				ret = normalizeIPv6(ret[1]);
 				if(ret){	//valid IPv6
-					parts.host = "["+ret+"]";
+					parts.host = "["+ret.host+"]";
 					href = href.slice(ret[0].length);
 				}
 				else{
@@ -1111,8 +1113,9 @@
 			else{
 				ret = /^([^:\/]*)(?=[:\/?#]|$)/.exec(href);
 				if(ret){	//possible host
-					parts.host = normalizeDNSHost(ret[1]).host;
-					if(parts.host){	//valid host
+					let ret2 = normalizeDNSHost(ret[1]);
+					if(ret2){	//valid host
+						parts.host = ret2.host;
 						href = href.slice(ret[0].length);
 					}
 					else{
@@ -1142,9 +1145,11 @@
 		
 		function getPQF(href){
 			
+			if(!href) return;
+			
 			//get path
 			
-			ret = /^[^?#]*/g.exec(href)[0];
+			let ret = /^[^?#]*/g.exec(href)[0];
 			href = href.slice(ret.length);
 			
 			//percent-encode illegal characters
@@ -1154,7 +1159,7 @@
 			
 			//get query
 			
-			ret = /^(\?[^#]*)?/.exec(href);
+			ret = /^(\?[^#]*)?/.exec(href)[0];
 			href = href.slice(ret.length);
 			
 			//percent-encode illegal characters
@@ -1202,16 +1207,21 @@
 			}
 		}
 		
-		getPQF();	//get path, query, and fragment
+		getPQF(href);	//get path, query, and fragment
 		
 		ret = ParseURI(parts.scheme + (parts.authority ? "//"+parts.authority : "") + parts.path + "?"+parts.query + "#"+parts.fragment);
 		if(ret) return ret.uri;	//fixed URI
 		
 		
 		if(!schemeFound && /^[^:\/?#]*:/.test(given)){
-		//broken hyperlink is possibly a relative path with the first segment including a colon
-			//precede it with a dot-segment and try again
-			return fixHyperlink("./"+href);
+		//broken hyperlink is possibly a relative path, with the first segment including a colon
+			if(location.scheme){
+				getWindowAuthority();
+				return fixHyperlink(location.scheme + (parts.authority ? "//"+parts.authority : "") + href);
+			}
+			else{
+				return;	//can't fix it
+			}
 		}
 		
 		return;	//can't fix it
