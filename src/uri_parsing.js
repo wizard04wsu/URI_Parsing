@@ -1267,7 +1267,7 @@
 				//percent-encode illegal characters
 				href = href.slice(1).replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@\/?%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
 				
-				parts.fragment = normalizeFragment(ret);
+				parts.fragment = normalizeFragment(href);
 			}
 			
 		}

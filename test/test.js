@@ -25,6 +25,8 @@ let loc = window.location,
 		["a:/../b/c", "a:/../b/c"],
 		["a://b/../../././.././../c/./d/../e", "a://b/../../././.././../c/./d/../e"],
 		["../a", null, fixTest("/a","../a")],
+		["a:?b=?#&c#d", null, "a:?b=?#&c%23d"],
+		["Aa://Bb@Cc/Dd", "aa://Bb@cc/Dd"],
 		
 		
 		["http:", null],
