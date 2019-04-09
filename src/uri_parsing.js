@@ -1,6 +1,7 @@
 /**
  * ParseURI(uri)
  * ParseURI.domain(host)
+ * ParseURI.resolveRelativePath(path, isPartial)
  * ParseURI.query(queryString)
  * ParseURI.emailAddress(address)
  * ParseURI.fixHyperlink(href)
@@ -41,20 +42,19 @@
 	 * @return {object} - Object containing the URI and its parts. Null if the URI is invalid. The members depend on if the scheme is http, https, mailto, or something else. Possible members:
 	 *   {string} .uri - The normalized URI.
 	 *   {string} .scheme
-	 *   {string} .authority - For non-http/https/mailto URIs. Empty string if there isn't an authority.
-	 *   {object} .authority - For http or https URIs.
-	 *     {function} .toString - Returns the authority as a string.
+	 *   {object} .authority
+	 *     {function} .authority.toString - Returns the authority as a string.
 	 *     {string} .authority.userinfo
-	 *     {string} .authority.host
-	 *       {function} .toString - Returns the host as a string.
+	 *     {object} .authority.host
+	 *       {function} .authority.host.toString - Returns the host as a string.
 	 *       {array} .authority.host.labels - Array of labels within a domain name. Undefined if it's an IP.
 	 *       {string} .authority.host.ip - IP address (IPv4 if possible).
 	 *       {string} .authority.host.ipv4 - IPv4 version of the IP.
 	 *       {string} .authority.host.ipv6 - IPv6 version of the IP.
 	 *     {string} .authority.port
-	 *   {string} .path - For non-mailto URIs.
-	 *   {array} .query - For non-mailto URIs. An array of decoded name/value pairs (each pair is an object {name, value}).
-	 *     {function} .toString - Returns the normalized query as a string.
+	 *   {string} .query - For non-http/https/mailto URIs.
+	 *   {array} .query - For http/https URIs. An array of decoded name/value pairs (each pair is an object {name, value}).
+	 *     {function} .query.toString - Returns the normalized query as a string.
 	 *   {string} .fragment - For non-mailto URIs.
 	 *   {array} .to - For mailto URIs. Array of valid email addresses.
 	 *   {array} .cc - For mailto URIs. Array of valid email addresses.
@@ -172,10 +172,23 @@
 		}
 		else{
 			
+			let authorityObj = void 0;
+			if(authority){
+				authorityObj = {};
+				defineProperty(authorityObj, "toString", function (){ return authority; }, true, false, true);
+				authorityObj.userinfo = userinfo;
+				authorityObj.host = {};
+				defineProperty(authorityObj.host, "toString", function (){ return host.host; }, true, false, true);
+				authorityObj.host.ip = host.ip;
+				authorityObj.host.ipv4 = host.ipv4;
+				authorityObj.host.ipv6 = host.ipv6;
+				authorityObj.port = port;
+			}
+			
 			return {
 				uri: uri,
 				scheme: scheme,
-				authority: authority,
+				authority: authorityObj,
 				path: path,
 				query: query,
 				fragment: fragment

@@ -1,11 +1,49 @@
-URI Parsing
-=====
+# URI Parsing
 
-JavaScript functions for validating, parsing, and normalizing URIs and email addresses
+JavaScript functions for validating, parsing, and normalizing URIs and email addresses.
 
-These do not support IPvFuture literal address formats.
+This script does not support:
+- internationalized domain names (IDNs)
+- non-ASCII email addresses
+- IPvFuture literal address formats
+- obsolete syntaxes
 
-=====
+---
+
+**<samp style="background-color:transparent">ParseURI(*uri*)</samp>**
+
+Validates and normalizes a URI, then splits it into its parts. Additional processing is done for *http*, *https*, and *mailto* URIs.
+
+Parameters:
+- *uri* &nbsp; {string}
+
+Returns an object containing these members (if found in the URI). Null if the URI is invalid.
+- *.uri* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; The normalized URI.
+- *.scheme* &nbsp; {string}
+- *.authority* &nbsp; {object} &nbsp;&nbsp;&nbsp;&nbsp; May contain these members:
+    - *.toString()* &nbsp; {function} &nbsp;&nbsp;&nbsp;&nbsp; Overrides the inherited function. Returns the authority as a string.
+    - *.userinfo* &nbsp; {string}
+    - *.host* &nbsp; {object} &nbsp;&nbsp;&nbsp;&nbsp; May contain these members:
+        - *.toString()* &nbsp; {function} &nbsp;&nbsp;&nbsp;&nbsp; Overrides the inherited function. Returns the host as a string.
+        - *.labels* &nbsp; {array} &nbsp;&nbsp;&nbsp;&nbsp; For the *http* and *https* schemes. Array of labels within a domain name. Undefined if it's an IP address.
+        - *.ip* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; IP address (IPv4 is possible).
+        - *.ipv4* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; IPv4 version of the IP address.
+        - *.ipv6* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; IPv6 version of the IP address.
+    - *.port* &nbsp; {string}
+- *.path* &nbsp; {string}
+- *.query* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; For schemes other than *http*, *https*, and *mailto*.
+- *.query* &nbsp; {array} &nbsp;&nbsp;&nbsp;&nbsp; For the *http* and *https* schemes. An array of decoded name/value pairs (each pair is an object {name, value}).
+    - *.toString()* &nbsp; {function} &nbsp;&nbsp;&nbsp;&nbsp; Overrides the inherited function. Returns the query as a string.
+- *.fragment* &nbsp; {string}
+- *.to*, *.cc*, *.bcc* &nbsp; {array} &nbsp;&nbsp;&nbsp;&nbsp; For the *mailto* scheme. Arrays of valid email addresses.
+- *.subject*, *.body* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; For the *mailto* scheme.
+- *.headers* &nbsp; {array} &nbsp;&nbsp;&nbsp;&nbsp; For the *mailto* scheme. An array of additional email headers (each header is an object {name, value}).
+
+
+
+
+
+
 
 **Normalizing functions for parts of a URI**
 
