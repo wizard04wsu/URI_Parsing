@@ -576,12 +576,16 @@
 			pair;
 		for(let i=0; i<pairs.length; i++){
 			pair = pairs[i].split("=");
-			if(pair.length <= 1 || pair[0] === ""){	//there is no name or no "="; skip it
+			if(pair[0] === ""){	//there is no name; remove it
 				pairs.splice(i--,1);
 				continue;
 			}
-			results.push( { name: decodeURIComponent(pair.shift()), value: decodeURIComponent(pair[0]) } );	//add the name/value pair to the results
+			//if there is no equal sign, the value will be undefined
+			
+			//add the name/value pair to the results
+			results.push( { name: decodeURIComponent(pair[0]), value: decodeURIComponent(pair[1]) } );
 		}
+		queryString = pairs.join("&");
 		
 		defineProperty(results, "toString", function (){ return queryString; }, true, false, true);
 		
@@ -1144,7 +1148,6 @@
 				parts.host = location.hostname;
 				parts.port = location.port;
 				parts.authority = (parts.userinfo?parts.userinfo+"@":"") + parts.host + (parts.port?":"+parts.port:"");
-				authorityFound = true;
 			}
 		}
 		
@@ -1224,12 +1227,12 @@
 			href = href.slice(ret.length);
 			
 			//percent-encode illegal characters
-			ret = ret.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
+			ret = ret.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@\/%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
 			
 			let path = normalizePath(ret);
 			if(!schemeFound && !authorityFound && path[0] !== "/"){
 					parts.relativePath = path;
-					if(location.path !== void 0) parts.path = location.path.replace(/(^|\/)[^\/]*$/, function (match, p1){ return p1+path; });
+					if(location.pathname !== void 0) parts.path = location.pathname.replace(/(^|\/)[^\/]*$/, "/"+path);
 			}
 			else{
 				parts.path = path;

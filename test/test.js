@@ -1,12 +1,15 @@
 
+function fixTest(ifHttp, ifNotHttp){
+	return /^https?:$/.test(loc.protocol)?loc.protocol+"//"+(loc.username?loc.username:"")+(loc.password?":"+loc.password:"")+(loc.username|loc.password?"@":"")+loc.host+ifHttp:loc.protocol+ifNotHttp;
+}
 let loc = window.location,
 	test = [
 		["", null],
-		["a", null, loc.protocol+"a"],
+		["a", null, fixTest("/a","a")],
 		["a:", "a:"],
-		[":", null, loc.protocol+":"],
+		[":", null, fixTest("/:",":")],
 		["a:b", "a:b"],
-		[":b", null, loc.protocol+":b"],
+		[":b", null, fixTest("/:b",":b")],
 		["a:/", "a:/"],
 		["a:b/", "a:b/"],
 		["a:/b", "a:/b"],
@@ -21,7 +24,7 @@ let loc = window.location,
 		["a:../b/c", "a:../b/c"],
 		["a:/../b/c", "a:/../b/c"],
 		["a://b/../../././.././../c/./d/../e", "a://b/../../././.././../c/./d/../e"],
-		["../a", null, loc.protocol+"../a"],
+		["../a", null, fixTest("/a","../a")],
 		
 		
 		["http:", null],
@@ -41,7 +44,7 @@ let loc = window.location,
 		["http:/../b/c", null],
 		["http://b/../../././.././../c/./d/../e", "http://b/c/e"],
 		
-		["http://foo.bar/baz/bop.htm?a=1&b=&c#lorem", "http://foo.bar/baz/bop.htm?a=1&b=&c#lorem"],
+		["http://foo.bar/baz/bop.htm?a=1&b=&c&=d&=&&#lorem", "http://foo.bar/baz/bop.htm?a=1&b=&c#lorem"],
 		
 		
 		["mailto:a@b", "mailto:a@b"],
