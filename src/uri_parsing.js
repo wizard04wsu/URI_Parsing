@@ -15,7 +15,7 @@
  * General references:
  *   RFC 3986 "Uniform Resource Identifier (URI): Generic Syntax"   https://tools.ietf.org/html/rfc3986
  *   How to Obscure Any URL   http://www.pc-help.org/obscure.htm
- *   RFC 6068 "The 'mailto' URI Scheme"	  https://tools.ietf.org/html/rfc6068
+ *   RFC 6068 "The 'mailto' URI Scheme"   https://tools.ietf.org/html/rfc6068
  *   Wikipedia: Email address   https://en.wikipedia.org/wiki/Email_address
  *   RFC 5322 "Internet Message Format"   https://tools.ietf.org/html/rfc5322
  *   RFC 5321 "Simple Mail Transfer Protocol"   https://tools.ietf.org/html/rfc5321#section-4.1.2
