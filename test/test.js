@@ -2,6 +2,7 @@
 function fixTest(ifHttp, ifNotHttp){
 	return /^https?:$/.test(loc.protocol)?loc.protocol+"//"+(loc.username?loc.username:"")+(loc.password?":"+loc.password:"")+(loc.username|loc.password?"@":"")+loc.host+ifHttp:loc.protocol+ifNotHttp;
 }
+
 let loc = window.location,
 	test = [
 		["", null],
@@ -27,6 +28,7 @@ let loc = window.location,
 		["../a", null, fixTest("/a","../a")],
 		["a:?b=?#&c#d", null, "a:?b=?#&c%23d"],
 		["Aa://Bb@Cc/Dd", "aa://Bb@cc/Dd"],
+		["a:[", null, "a:%5B"],
 		
 		
 		["http:", null],
