@@ -43,12 +43,13 @@ Returns an object containing the following members (if found in the URI). Null i
 
 ## DNS Domains
 
-**<samp style="background-color:transparent">ParseURI.domain(*host*)</samp>**
+**<samp style="background-color:transparent">ParseURI.domain(*host*, *useMixedNotation*)</samp>**
 
 Converts an obscured host to a more readable one. Only DNS domains or IP addresses are deemed valid.
 
 Parameters:
 - *host* &nbsp; {string}
+- *useMixedNotation* &nbsp; {boolean} &nbsp;&nbsp;&nbsp;&nbsp; Mix hexadecimal and dot-decimal notations to represent IPv4-mapped IPv6 addresses. Default is true.
 
 Returns an object containing the normalized host and its parts. Null if the host is invalid. May contain these members:
 - *.host* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; The normalized DNS domain or IP.

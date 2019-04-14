@@ -202,13 +202,14 @@
 	 * Converts an obscured host to a more readable one.
 	 * 
 	 * @param {string} host
+	 * @param {boolean} useMixedNotation - Mix hexadecimal and dot-decimal notations to represent IPv4-mapped IPv6 addresses. Default is true (recommended per RFC 5952, section 5).
 	 * @return {string} - The normalized host. Null if the host is invalid.
 	 * 
 	 * See: How to Obscure Any URL   http://www.pc-help.org/obscure.htm
 	 *      RFC 3986   https://tools.ietf.org/html/rfc3986#section-3.2.2
 	 *                 https://tools.ietf.org/html/rfc3986#section-2
 	 */
-	function normalizeHost(host){
+	function normalizeHost(host, useMixedNotation){
 		
 		if(host === "") return "";
 		if(host === void 0) return null;
@@ -216,7 +217,7 @@
 		
 		let ip;
 		
-		if((/^\[.*\]$/i).test(host) && (ip = normalizeIPv6(host.slice(1, -1))) ) return "["+ip+"]";	//it's a valid IPv6 address
+		if((/^\[.*\]$/i).test(host) && (ip = normalizeIPv6(host.slice(1, -1), useMixedNotation)) ) return "["+ip+"]";	//it's a valid IPv6 address
 		
 		if(!(/^(?:[0-9a-z!$&'()*+,\-.;=_~]|%[0-9A-F]{2})*$/i).test(host)) return null;	//contains invalid characters
 		
@@ -236,9 +237,10 @@
 	/**
 	 * Converts an obscured host to a more readable one. Only DNS domains or IPs are deemed valid.
 	 * 
-	 * ParseURI.domain(host)
+	 * ParseURI.domain(host, useMixedNotation)
 	 * 
 	 * @param {string} host
+	 * @param {boolean} useMixedNotation - Mix hexadecimal and dot-decimal notations to represent IPv4-mapped IPv6 addresses. Default is true (recommended per RFC 5952, section 5).
 	 * @return {object} - Object containing the host and its parts. Null if the host is invalid. Possible members:
 	 *   {string} .host - The normalized domain name or IP.
 	 *   {string} .ip
@@ -250,19 +252,19 @@
 	 *      RFC 2181   https://tools.ietf.org/html/rfc2181#section-11
 	 *      RFC 1123   https://tools.ietf.org/html/rfc1123#section-2
 	 */
-	function normalizeDNSHost(host){
+	function normalizeDNSHost(host, useMixedNotation){
 		
-		host = normalizeHost(host);
+		host = normalizeHost(host, useMixedNotation);
 		if(!host) return null;
 		
 		if((/[^a-z0-9:\[\].-]/i).test(host)) return null;	//contains invalid characters
 		
 		if(/^\d+(\.\d+){3}$/.test(host)){	//it's an IPv4 address
-			return { host:host, ip:host, ipv4:host, ipv6:"::ffff:"+host /*ipv6:"::ffff:"+v4to6(host)*/ };
+			return { host:host, ip:host, ipv4:host, ipv6:normalizeIPv6("::ffff:"+host, useMixedNotation) };
 		}
 		if(host[0] === "["){	//it's an IPv6 address
 			let ipv6 = host.slice(1, -1),
-				ipv4 = v6to4(ip);
+				ipv4 = v6to4(ipv6);
 			return { host:(ipv4||host), ip:(ipv4||ipv6), ipv4:ipv4, ipv6:ipv6 };
 		}
 		
@@ -317,6 +319,7 @@
 	 * @return {string} - Normalized IPv6 address. Null if it's invalid.
 	 * 
 	 * See: How to Obscure Any URL   http://www.pc-help.org/obscure.htm
+	 *      RFC 3986   https://tools.ietf.org/html/rfc3986#section-7.4
 	 *      Wikipedia: IPv4, Address representations   http://en.wikipedia.org/wiki/IPv4#Address_representations
 	 */
 	function normalizeIPv4(ip){
@@ -324,16 +327,16 @@
 		if(ip === void 0) return null;
 		ip = ""+ip;
 		
-		if(!(/^(?=(\d+|0x[0-9A-F]+))\1(?:\.(?=(\d+|0x[0-9A-F]+))\2){0,3}$/i).test(ip)) return null;	//invalid IP address
+		if(!(/^(?=(0x[0-9A-F]+|\d+))\1(?:\.(?=(0x[0-9A-F]+|\d+))\2){0,3}$/i).test(ip)) return null;	//invalid IP address
 		
 		let parts = ip.split("."),
 			vals = [];
 		for(let i=0; i<parts.length; i++){	//for each part
 			let val;
-			if((/^0x/i).test(parts[1])){
-				val = parseInt(parts[i], 16);	//convert hexadecimal to decimal
+			if((/^0x/i).test(parts[i])){
+				val = parseInt(parts[i].slice(2), 16);	//convert hexadecimal to decimal
 			}
-			else if(parts[1][0] === "0"){
+			else if(parts[i][0] === "0"){
 				val = parseInt(parts[i], 8);	//convert octal to decimal
 			}
 			else{
@@ -399,6 +402,8 @@
 					resultLeft.push(fieldsLeft[i]);
 				}
 				else if(!compacted && i === 6 && fieldsLeft.length === 7 && /^\d+(\.\d+){3}$/.test(fieldsLeft[i]) ){	//last part of entire IP is a ver. 4 IP
+					fieldsLeft[i] = fieldsLeft[i].replace(/(^|\.)0+([1-9])/, "$1$2");	//remove leading zeroes (octals are not allowed)
+					
 					if(useMixedNotation && /^(0+:){5}(0+|ffff)$/.test(resultLeft.join(":"))){	//well-known prefix that distinguishes an embedded IPv4
 						includesIPv4 = true;
 						resultLeft.push(normalizeIPv4(fieldsLeft[i]));
@@ -420,6 +425,8 @@
 						resultRight.push(fieldsRight[i]);
 					}
 					else if(i === fieldsRight.length-1 && /^\d+(\.\d+){3}$/.test(fieldsRight[i]) ){	//last part of entire IP is a ver. 4 IP
+						fieldsRight[i] = fieldsRight[i].replace(/(^|\.)0+([1-9])/, "$1$2");	//remove leading zeroes (octals are not allowed)
+						
 						if(useMixedNotation && ( ( /^((0+:)*0+)?$/.test(resultLeft.join(":")) && /^((0+:)*(0+|ffff))?$/.test(resultRight.join(":")) ) ||
 						 /^(0+:){5}(0+|ffff)$/.test(resultLeft.join(":")) )){	//well-known prefix that distinguishes an embedded IPv4
 							includesIPv4 = true;
