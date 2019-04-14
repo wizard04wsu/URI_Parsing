@@ -46,7 +46,7 @@ console.group("Hosts");
 			"[::0:1.1.1.10]",
 			"[::1.1.1.10]",
 			"[0::0:1.1.1.10]",
-			"[::ffff:1.1.1.010]",	//octals are not allowed here
+			"[::ffff:1.1.1.010]",	//octals are not allowed here; they must be interpreted as decimal
 			"[::ffff:101:10a]",
 			"[::ffff:0101:010a]",
 			"1.1.1.10"
