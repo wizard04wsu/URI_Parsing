@@ -17,7 +17,7 @@ let useMixedNotation = void 0,
 		}
 	};
 console.group("Hosts");
-	console.group("IPv4");
+	console.groupCollapsed("IPv4");
 		
 		test("1.1.1.10", "ipv4",
 			"1.1.1.10",
@@ -39,7 +39,7 @@ console.group("Hosts");
 		);
 		
 	console.groupEnd();
-	console.group("IPv6");
+	console.groupCollapsed("IPv6");
 		
 		console.group("with mixed notation");
 			
@@ -54,7 +54,12 @@ console.group("Hosts");
 				"1.1.1.10"
 			);
 			test("::101:10a", "ipv6",
-				"[::101:10a]"	//TODO: should this normalize to ::ffff:1.1.1.10 ?
+				"[::101:10a]",
+				"[0::101:10a]"
+			);
+			test("abcd::dcba", "ipv6",
+				"[abcd::dcba]",
+				"[abcd:0:0:0:0:0:0:dcba]"
 			);
 			
 		console.groupEnd();
@@ -75,9 +80,16 @@ console.group("Hosts");
 	console.groupEnd();
 	console.group("DNS Domain");
 		
-		test("a", "host",
-			"a"
-		);
+		test("1.1.1.10", "host", "1.1.1.10", "[::ffff:1.1.1.10]", "[::ffff:101:10a]");
+		test("[::101:10a]", "host", "[::101:10a]", "[0::0:101:10a]");
+		test("[abcd::dcba]", "host", "[abcd::dcba]", "[abcd:0:0:0:0:0:0:dcba]");
+		test("a", "host", "a", "A");
+		test("a-1", "host", "a-1");
+		test("1a", "host", "1a");
+		test("a.b", "host", "a.b");
+		test("1.a", "host", "1.a");
+		test("a.1", "host", "a.1");
+		test("0.0.0.1", "host", "1", "%31");
 		
 	console.groupEnd();
 	console.group("Invalid");
@@ -85,7 +97,9 @@ console.group("Hosts");
 		test(null, null,
 			".",
 			"[::ffff:1.1.1.0xC]",	//hexadecimals are not allowed here
-			"[1.1.1.10]"
+			"[1.1.1.10]",
+			"a-",
+			"-a"
 		);
 		
 	console.groupEnd();

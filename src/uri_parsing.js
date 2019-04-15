@@ -228,7 +228,7 @@
 		
 		//make percent encodings upper case; everything else lower case
 		host = host.toLowerCase();
-		host = host.replace(/%(..)/ig, function (match, p1){ return "%"+p1.toUpperCase(); });
+		host = host.replace(/%(..)/ig, function (match){ return match.toUpperCase(); });
 		
 		return host;
 		
@@ -300,19 +300,20 @@
 	 * See: RFC 4291   https://tools.ietf.org/html/rfc4291#section-2.5.5
 	 */
 	function v6to4(ip){
-		if(!/^::ffff:[0-9A-F]+:[0-9A-F]+$/i.test(ip)) return void 0;	//can't be converted to IPv4
 		function hexToDec(hexField){
 			let h = 1*("0x"+hexField),
 				b = h%256,
 				a = (h-b)/256;
 			return a+"."+b;
 		}
-		ip = /^::ffff:(.+):(.+)$/i.exec(ip);
-		return hexToDec(ip[1]) + "." + hexToDec(ip[2]);
+		let ret;
+		if(ret = /^::ffff:([0-9.]+)$/i.exec(ip)) return ret[1];
+		if(ret = /^::ffff:([^:]+):([^:]+)$/i.exec(ip)) return hexToDec(ret[1]) + "." + hexToDec(ret[2]);
+		return void 0;	//can't be converted to IPv4
 	}
 	
 	/**
-	 * Normalizes an IPv6 address.
+	 * Normalizes an IPv4 address.
 	 * 
 	 * @param {string} ip - IPv6 address.
 	 * @param {boolean} [useMixedNotation] - Mix hexadecimal and dotted-decimal notations to represent an IPv4-mapped IPv6 address. Default is true (recommended per RFC 5952, section 5).
