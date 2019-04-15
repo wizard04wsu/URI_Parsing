@@ -329,6 +329,7 @@
 		
 		if(!(/^(?=(0x[0-9A-F]+|\d+))\1(?:\.(?=(0x[0-9A-F]+|\d+))\2){0,3}$/i).test(ip)) return null;	//invalid IP address
 		
+		//dword, octal, and hexadecimal numbers aren't valid, but they work in web browsers anyway, so we'll fix them
 		let parts = ip.split("."),
 			vals = [];
 		for(let i=0; i<parts.length; i++){	//for each part
@@ -372,7 +373,7 @@
 	 * @param {boolean} useMixedNotation - Mix hexadecimal and dot-decimal notations to represent IPv4-mapped IPv6 addresses. Default is true (recommended per RFC 5952, section 5).
 	 * @return {string} - Normalized IPv6 address. Null if it's invalid.
 	 * 
-	 * See: RFC 4291   https://tools.ietf.org/html/rfc4291
+	 * See: RFC 4291   https://tools.ietf.org/html/rfc4291#section-2.5.5
 	 *      RFC 5952   https://tools.ietf.org/html/rfc5952#section-4
 	 *                 https://tools.ietf.org/html/rfc5952#section-5
 	 */
@@ -402,7 +403,7 @@
 					resultLeft.push(fieldsLeft[i]);
 				}
 				else if(!compacted && i === 6 && fieldsLeft.length === 7 && /^\d+(\.\d+){3}$/.test(fieldsLeft[i]) ){	//last part of entire IP is a ver. 4 IP
-					fieldsLeft[i] = fieldsLeft[i].replace(/(^|\.)0+([1-9])/, "$1$2");	//remove leading zeroes (octals are not allowed)
+					fieldsLeft[i] = fieldsLeft[i].replace(/(^|\.)0+(?=\d)/g, "$1");	//remove leading zeroes from IPv4 fields (octals are not acceptable in an IPv6)
 					
 					if(useMixedNotation && /^(0+:){5}(0+|ffff)$/.test(resultLeft.join(":"))){	//well-known prefix that distinguishes an embedded IPv4
 						includesIPv4 = true;
@@ -425,7 +426,7 @@
 						resultRight.push(fieldsRight[i]);
 					}
 					else if(i === fieldsRight.length-1 && /^\d+(\.\d+){3}$/.test(fieldsRight[i]) ){	//last part of entire IP is a ver. 4 IP
-						fieldsRight[i] = fieldsRight[i].replace(/(^|\.)0+([1-9])/, "$1$2");	//remove leading zeroes (octals are not allowed)
+						fieldsRight[i] = fieldsRight[i].replace(/(^|\.)0+(?=\d)/g, "$1");	//remove leading zeroes from IPv4 fields (octals are not acceptable in an IPv6)
 						
 						if(useMixedNotation && ( ( /^((0+:)*0+)?$/.test(resultLeft.join(":")) && /^((0+:)*(0+|ffff))?$/.test(resultRight.join(":")) ) ||
 						 /^(0+:){5}(0+|ffff)$/.test(resultLeft.join(":")) )){	//well-known prefix that distinguishes an embedded IPv4
@@ -458,7 +459,7 @@
 		if(includesIPv4) ip = ip.replace(/^(0+:){6}/, "0:0:0:0:0:ffff:");
 		
 		//remove leading zeros in fields
-		ip = ip.replace(/(^|:)0+([^:.])/g, "$1$2");
+		ip = ip.replace(/(^|:)0+(?=[^:.])/g, "$1");
 		
 		//replace longest run of multiple zeros with "::" shortcut
 		let longest = "",

@@ -19,7 +19,7 @@ let useMixedNotation = void 0,
 console.group("Hosts");
 	console.group("IPv4");
 		
-		test("1.1.1.10", "host",
+		test("1.1.1.10", "ipv4",
 			"1.1.1.10",
 			"1.1.513.10",		// 1 + (256*2)  -->  513  (add multiples of 256 to any/all segments)
 			"1.1.266",			// (256)*1 + 10  -->  266  (turn the last 2 segments into a dword)
@@ -40,21 +40,24 @@ console.group("Hosts");
 		
 	console.groupEnd();
 	console.group("IPv6");
-			
-		test("::ffff:1.1.1.10", "ipv6",
-			"[::ffff:1.1.1.10]",
-			"[::0:1.1.1.10]",
-			"[::1.1.1.10]",
-			"[0::0:1.1.1.10]",
-			"[::ffff:1.1.1.010]",	//octals are not allowed here; they must be interpreted as decimal
-			"[::ffff:101:10a]",
-			"[::ffff:0101:010a]",
-			"1.1.1.10"
-		);
-		test("::101:10a", "ipv6",
-			"[::101:10a]"
-		);
 		
+		console.group("with mixed notation");
+			
+			test("::ffff:1.1.1.10", "ipv6",
+				"[::ffff:1.1.1.10]",
+				"[::0:1.1.1.10]",
+				"[::1.1.1.10]",
+				"[0::0:1.1.1.10]",
+				"[::ffff:1.1.1.010]",	//octals are not allowed here; they must be interpreted as decimal
+				"[::ffff:101:10a]",
+				"[::ffff:0101:010a]",
+				"1.1.1.10"
+			);
+			test("::101:10a", "ipv6",
+				"[::101:10a]"	//TODO: should this normalize to ::ffff:1.1.1.10 ?
+			);
+			
+		console.groupEnd();
 		console.group("without mixed notation");
 			
 			useMixedNotation = false;
