@@ -94,9 +94,13 @@ Returns an object containing the normalized email address or mailbox and its par
 - *.full* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; If there is a display name: <samp>"display name" &lt;local@domain&gt;</samp>. If there isn't: <samp>local@domain</samp>.
 - *.simple* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; <samp>local@domain</samp>
 - *.displayName* &nbsp; {string}
-- *.unescapedDisplayName* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; Display name with any quoted strings unescaped. This is what you would show to a user.
 - *.localPart* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; Local part of the address (to the left of "@").
 - *.domain* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; Domain part of the address. Only DNS domains and IP addresses are deemed valid.
+- *.unescapedDisplayName* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; Display name with any quoted strings unescaped. This is what you would show to a user.
+- *.unescapedFull* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; `.full` with any quoted strings unescaped.
+- *.unescapedSimple* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; `.simple` with the local part unescaped (if it's a quoted string).
+- *.unescapedDisplayName* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; `.displayName` with any quoted strings unescaped.
+- *.unescapedLocalPart* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; `.localPart` unescaped (if it's a quoted string).
 
 ## Hyperlinks
 
