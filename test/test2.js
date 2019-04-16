@@ -16,6 +16,7 @@ let useMixedNotation = void 0,
 			console.assert(testPassed, output);
 		}
 	};
+
 console.group("Hosts");
 	console.groupCollapsed("IPv4");
 		
@@ -37,6 +38,7 @@ console.group("Hosts");
 			"%31.%31.%31.%310",	// percent-encoded characters
 			"1.0X1.1.%30%78A"	// any/all segments can be hexadecimal
 		);
+		test("0.0.0.1", "ipv4", "1", "%31");
 		
 	console.groupEnd();
 	console.groupCollapsed("IPv6");
@@ -53,14 +55,8 @@ console.group("Hosts");
 				"[::ffff:0101:010a]",
 				"1.1.1.10"
 			);
-			test("::101:10a", "ipv6",
-				"[::101:10a]",
-				"[0::101:10a]"
-			);
-			test("abcd::dcba", "ipv6",
-				"[abcd::dcba]",
-				"[abcd:0:0:0:0:0:0:dcba]"
-			);
+			test("::101:10a", "ipv6", "[::101:10a]", "[0::101:10a]");
+			test("abcd::dcba", "ipv6", "[abcd::dcba]", "[abcd:0:0:0:0:0:0:dcba]");
 			
 		console.groupEnd();
 		console.group("without mixed notation");
@@ -78,18 +74,16 @@ console.group("Hosts");
 		console.groupEnd();
 			
 	console.groupEnd();
-	console.group("DNS Domain");
+	console.groupCollapsed("Host (DNS Domain or IP)");
 		
 		test("1.1.1.10", "host", "1.1.1.10", "[::ffff:1.1.1.10]", "[::ffff:101:10a]");
-		test("[::101:10a]", "host", "[::101:10a]", "[0::0:101:10a]");
-		test("[abcd::dcba]", "host", "[abcd::dcba]", "[abcd:0:0:0:0:0:0:dcba]");
+		test("[::101:10a]", "host", "[::101:10a]");
 		test("a", "host", "a", "A");
 		test("a-1", "host", "a-1");
 		test("1a", "host", "1a");
 		test("a.b", "host", "a.b");
-		test("1.a", "host", "1.a");
-		test("a.1", "host", "a.1");
-		test("0.0.0.1", "host", "1", "%31");
+		test("1.a", "host", "1.a", "%31.%41", "%31%2E%41");
+		test("example.com", "host", "example.com");
 		
 	console.groupEnd();
 	console.group("Invalid");
@@ -99,8 +93,48 @@ console.group("Hosts");
 			"[::ffff:1.1.1.0xC]",	//hexadecimals are not allowed here
 			"[1.1.1.10]",
 			"a-",
-			"-a"
+			"-a",
+			"a.1"
 		);
 		
 	console.groupEnd();
+console.groupEnd();
+
+test = function (expectedOutput, property, ...input){
+	let i, output, actualOutput, testPassed;
+	for(i=0; i<input.length; i++){
+		console.log("Expected:",expectedOutput,"  Input:",input[i]);
+		output = ParseURI.emailAddress(input[i], useMixedNotation);
+		actualOutput = property === null ? output : output===null?null:output[property];
+		if(actualOutput !== expectedOutput){
+			testPassed = false;
+			console.log("Actual:", actualOutput);
+		}
+		else{
+			testPassed = true;
+		}
+		console.assert(testPassed, output);
+	}
+};
+
+console.group("Email addresses");
+	
+	//tests from RFC 3696   https://tools.ietf.org/html/rfc3696#section-3
+	test('"Abc@def"@example.com', "simple", '"Abc@def"@example.com');
+	test('"Fred Bloggs"@example.com', "simple", '"Fred Bloggs"@example.com');
+	test("user+mailbox@example.com", "simple", "user+mailbox@example.com");
+	test("customer/department=shipping@example.com", "simple", "customer/department=shipping@example.com");
+	test("$A12345@example.com", "simple", "$A12345@example.com");
+	test("!def!xyz%abc@example.com", "simple", "!def!xyz%abc@example.com");
+	test("_somename@example.com", "simple", "_somename@example.com");
+	
+	console.group("Invalid");
+		
+		//tests from RFC 3696 that use obsolete syntax
+		test(null, null, "Abc\\@def@example.com");
+		test(null, null, "Fred\\ Bloggs@example.com");
+		test(null, null, "Joe.\\\\Blow@example.com");
+		
+	console.groupEnd();
+	
 console.groupEnd();

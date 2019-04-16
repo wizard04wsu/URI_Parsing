@@ -251,6 +251,7 @@
 	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986#section-3.2.2
 	 *      RFC 2181   https://tools.ietf.org/html/rfc2181#section-11
 	 *      RFC 1123   https://tools.ietf.org/html/rfc1123#section-2
+	 *      RFC 3696   https://tools.ietf.org/html/rfc3696#section-2
 	 */
 	function normalizeDNSHost(host, useMixedNotation){
 		
@@ -270,7 +271,7 @@
 		
 		if(host.length > 255) return null;	//too long for a domain name
 		
-		if((/^(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\1(?:\.(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\2)*$/i).test(host)){	//it's a domain name
+		if(/^(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\1(?:\.(?=([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))\2)*$/i.test(host) && !(/\.\d+$/).test(host)){	//it's a domain name (and per RFC 3696, the TLD isn't all-numeric)
 			return { host:host, labels:host.split(".") };
 		}
 		
@@ -787,6 +788,8 @@
 	 * Does not consider the 998 character limit per line.
 	 * See: RFC 5322   https://tools.ietf.org/html/rfc5322
 	 *      RFC 5321   https://tools.ietf.org/html/rfc5321#section-4.1.2
+	 *                 https://tools.ietf.org/html/rfc5321#section-2.3.4
+	 *                 https://tools.ietf.org/html/rfc5321#section-4.5.3.1
 	 *      Wikipedia: Email address   https://en.wikipedia.org/wiki/Email_address
 	 */
 	function parseEmailAddress(address){
@@ -916,10 +919,10 @@
 					}
 					tokens.push(token);
 				}
-				else if( (m = /^[a-z0-9:\[\].-]+/i.exec(mailbox)) && (trimmed = normalizeDNSHost(m[0])) ){
-					token.type = "domain";
+				else if( (m = /^\[([a-z0-9\-.:]+)\]/i.exec(mailbox)) && (trimmed = normalizeDNSHost(m[0]) || normalizeDNSHost(m[1])) ){
+					token.type = "domain-literal";
 					mailbox = mailbox.slice(m[0].length);
-					token.value = trimmed.host;
+					token.value = trimmed.host[0]==="[" ? trimmed.host : "["+trimmed.host+"]";
 					tokens.push(token);
 				}
 				else{
@@ -1002,6 +1005,7 @@
 				}
 				else if(!foundLocalPart){
 					if(tokens[i].type === "atom" || tokens[i].type === "dot-atom" || tokens[i].type === "quoted-string"){
+						if(tokens[i].value.length > 64) return null;	//too long
 						foundLocalPart = true;
 						i++;
 					}
@@ -1019,12 +1023,19 @@
 					}
 				}
 				else if(!foundDomain){
-					if(tokens[i].type === "domain"){
+					if(tokens[i].type === "domain-literal"){
+						if(tokens[i].value.length > 255) return null;	//too long
 						foundDomain = true;
 						i++;
 					}
 					else if( (tokens[i].type === "atom" || tokens[i].type === "dot-atom") && (tokens[i].value = normalizeDNSHost(tokens[i].value)) ){
-						tokens[i].value = tokens[i].value.host;
+						if(tokens[i].value.ipv4){
+							tokens[i].value = "[" + tokens[i].value.ipv4 + "]";	//IPv4 domain-literal
+						}
+						else{
+							tokens[i].value = tokens[i].value.host;
+						}
+						if(tokens[i].value.length > 255) return null;	//too long
 						foundDomain = true;
 						i++;
 					}
