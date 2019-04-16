@@ -96,7 +96,6 @@ Returns an object containing the normalized email address or mailbox and its par
 - *.displayName* &nbsp; {string}
 - *.localPart* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; Local part of the address (to the left of "@").
 - *.domain* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; Domain part of the address. Only DNS domains and IP addresses are deemed valid.
-- *.unescapedDisplayName* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; Display name with any quoted strings unescaped. This is what you would show to a user.
 - *.unescapedFull* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; `.full` with any quoted strings unescaped.
 - *.unescapedSimple* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; `.simple` with the local part unescaped (if it's a quoted string).
 - *.unescapedDisplayName* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; `.displayName` with any quoted strings unescaped.
