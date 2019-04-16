@@ -778,10 +778,13 @@
 	 *   {string} .full - If there is a display name: "display name" <local@domain>
 	 *                    If there isn't: local@domain
 	 *   {string} .simple - local@domain
-	 *   {string} .displayName - display name
-	 *   {string} .unescapedDisplayName - display name with any quoted strings unescaped (this is what you would show to a user)
+	 *   {string} .displayName - Display name.
 	 *   {string} .localPart - Local part of the address.
 	 *   {string} .domain - Domain part of the address. Only DNS domains or IPs are deemed valid.
+	 *   {string} .unescapedFull - `.full` with any quoted strings unescaped.
+	 *   {string} .unescapedSimple - `.simple` with the local part unescaped (if it's a quoted string).
+	 *   {string} .unescapedDisplayName - `.displayName` with any quoted strings unescaped.
+	 *   {string} .unescapedLocalPart - `.localPart` unescaped (if it's a quoted string).
 	 * 
 	 * Does not parse groups (e.g., a distribution list).
 	 * Unfolds whitespace and removes comments.
@@ -939,6 +942,7 @@
 			
 			let foundDisplayName = false,
 				foundNoDisplayName = false,
+				QSACount = 0,
 				foundAngleBracket = false,
 				foundNoAngleBracket = false,
 				foundLocalPart = false,
@@ -957,39 +961,42 @@
 						return null;
 					}
 				}
-				else if(tokens[i].type === "wsp"){
-					if(i === 0 || i === tokens.length-1){
-						tokens.splice(i, 1);
-					}
-					else if((foundLocalPart && !foundAtSign) || (foundAtSign && !foundDomain)){
-						return null;	//WSP around "@"
-					}
-					else{
-						tokens[i].value = " ";
-						i++;
-					}
-				}
 				else if(!foundDisplayName && !foundNoDisplayName){
-					if(tokens[i].type === "quoted-string"){
-						tokens[i].value = "\"" + tokens[i].value.slice(1,-1).replace(/[\t ]+/g, " ") + "\"";
+					if(tokens[i].type === "dot-atom"){
+						if(QSACount > 0) return null;
+						foundNoDisplayName = true;
+						foundNoAngleBracket = true;
+						foundLocalPart = true;
 						i++;
 					}
-					else if(tokens[i].type === "atom"){
+					else if(tokens[i].type === "quoted-string" || tokens[i].type === "atom"){
+						QSACount++;
 						i++;
 					}
-					else if(i === 1 && tokens[i].value === "@"){	//first token was the local part
+					else if(tokens[i].value === "@"){
+						if(QSACount > 1) return null;
 						foundNoDisplayName = true;
 						foundNoAngleBracket = true;
 						foundLocalPart = true;
 						foundAtSign = true;
 						i++;
 					}
-					else if(i > 0){
+					else if(tokens[i].type === "wsp"){
+						if(tokens[i+1] && tokens[i+1].value === "@") return null;	//WSP before "@"
+						i++;
+					}
+					else if(QSACount > 0){
 						foundDisplayName = true;
 					}
 					else{
 						foundNoDisplayName = true;
 					}
+				}
+				else if(tokens[i].type === "wsp"){
+					if((foundLocalPart && !foundAtSign) || (foundAtSign && !foundDomain)){
+						return null;	//WSP around "@"
+					}
+					i++;
 				}
 				else if(!foundAngleBracket && !foundNoAngleBracket){
 					if(tokens[i].value === "<"){
@@ -1068,15 +1075,9 @@
 				while(tokens[0].value !== "<"){
 					
 					if(tokens[0].type === "quoted-string"){
-						let innerText = tokens[0].value.slice(1,-1).replace(rxp_redundantPairs, "$1").replace(/[\t ]+/g, " ");
-						if(rxp_atomSequence.test(innerText)){	//inner text of the quoted-string is a sequence of atoms separated by spaces
-							parts.displayName += innerText;
-							parts.unescapedDisplayName += innerText;
-						}
-						else{
-							parts.displayName += "\""+innerText+"\"";
-							parts.unescapedDisplayName += innerText.replace(/\\(.)/g, "$1");
-						}
+						let str = tokens[0].value.replace(rxp_redundantPairs, "$1");
+						parts.displayName += str;
+						parts.unescapedDisplayName += str.replace(/\\(.)/g, "$1");
 					}
 					else{
 						parts.displayName += tokens[0].value;
@@ -1086,8 +1087,8 @@
 					tokens.shift();
 					
 				}
-				parts.displayName = parts.displayName.trim();
-				parts.unescapedDisplayName = parts.unescapedDisplayName.replace(/ {2,}/g, " ").trim();
+				parts.displayName = parts.displayName.replace(/[\t ]+/g, " ").trim();
+				parts.unescapedDisplayName = parts.unescapedDisplayName.replace(/[\t ]+/g, " ").trim();
 			}
 			
 			if(foundAngleBracket){
@@ -1097,14 +1098,10 @@
 				tokens.shift();
 			}
 			if(tokens[0].type === "quoted-string"){	//local part is a quoted-string
-				if(newRxp(rxpDotAtom+"$").test(tokens[0].value.slice(1,-1))){	//inner text of the quoted-string is a dot-atom
-					tokens[0].value = tokens[0].value.slice(1,-1);	//remove the quotes
-				}
-				else{
-					tokens[0].value = tokens[0].value.replace(rxp_redundantPairs, "$1");
-				}
+				tokens[0].value = tokens[0].value.replace(rxp_redundantPairs, "$1");
 			}
 			parts.localPart = tokens[0].value;
+			parts.unescapedLocalPart = parts.localPart.replace(/\\(.)/g, "$1");
 			tokens.shift();
 			
 			tokens.shift();	//the "@"
@@ -1114,8 +1111,10 @@
 			//ignore any remaining characters
 			
 			parts.simple = parts.localPart+"@"+parts.domain;
+			parts.unescapedSimple = parts.unescapedLocalPart+"@"+parts.domain;
 			
 			parts.full = foundDisplayName ? parts.displayName+" <"+parts.simple+">" : parts.simple;
+			parts.unescapedFull = foundDisplayName ? parts.unescapedDisplayName+" <"+parts.unescapedSimple+">" : parts.unescapedSimple;
 			
 		}
 		
