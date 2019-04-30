@@ -137,62 +137,58 @@
 			
 			uri = scheme+"://"+authority + path + (query ? "?"+queryObj : "") + (fragment ? "#"+fragment : "");
 			
-			let authorityObj = {};
-			defineProperty(authorityObj, "toString", function (){ return authority; }, true, false, true);
+			let authorityObj = new String(authority);
 			authorityObj.userinfo = userinfo;
-			authorityObj.host = {};
-			defineProperty(authorityObj.host, "toString", function (){ return host.host; }, true, false, true);
+			authorityObj.host = new String(host.host);
 			authorityObj.host.labels = host.labels;
 			authorityObj.host.ip = host.ip;
 			authorityObj.host.ipv4 = host.ipv4;
 			authorityObj.host.ipv6 = host.ipv6;
 			authorityObj.port = port;
 			
-			return {
-				uri: uri,
-				scheme: scheme,
-				authority: authorityObj,
-				path: path,
-				query: queryObj,
-				fragment: fragment
-			};
+			let ret = new String(uri);
+			ret.uri = uri;
+			ret.scheme = scheme;
+			ret.authority = authorityObj;
+			ret.path = path;
+			ret.query = queryObj;
+			ret.fragment = fragment;
+			return ret;
 			
 		}
 		else if(scheme === "mailto"){
 			
 			if(authority || fragment) return null;
 			
-			return parseMailto({
-					uri: uri,
-					scheme: scheme,
-					path: path,
-					query: parseQuery(query)
-				});
+				let ret = new String(uri);
+				ret.uri = uri;
+				ret.scheme = scheme;
+				ret.path = path;
+				ret.query = parseQuery(query);
+				return ret;
 			
 		}
 		else{
 			
 			let authorityObj = void 0;
 			if(authority){
-				authorityObj = {};
-				defineProperty(authorityObj, "toString", function (){ return authority; }, true, false, true);
+				authorityObj = new String(authority);
 				authorityObj.userinfo = userinfo;
-				authorityObj.host = {};
-				defineProperty(authorityObj.host, "toString", function (){ return host.host; }, true, false, true);
+				authorityObj.host = new String(host.host);
 				authorityObj.host.ip = host.ip;
 				authorityObj.host.ipv4 = host.ipv4;
 				authorityObj.host.ipv6 = host.ipv6;
 				authorityObj.port = port;
 			}
 			
-			return {
-				uri: uri,
-				scheme: scheme,
-				authority: authorityObj,
-				path: path,
-				query: query,
-				fragment: fragment
-			};
+			let ret = new String(uri);
+			ret.uri = uri;
+			ret.scheme = scheme;
+			ret.authority = authorityObj;
+			ret.path = path;
+			ret.query = query;
+			ret.fragment = fragment;
+			return ret;
 			
 		}
 		
@@ -1160,11 +1156,10 @@
 		if(ret) return valid(ret);	//URI is valid
 		
 		function valid(parsed){
-			let result = {},
+			let result = new String(parsed.uri),
 				qf = (""+parsed.query?"?"+parsed.query:"")+(parsed.fragment?"#"+parsed.fragment:"");
 			
 			result.uri = parsed.uri;
-			defineProperty(result, "toString", function (){ return result.uri; }, true, false, true);
 			if(parsed.authority) result.networkPathReference = "//"+parsed.authority+parsed.path+qf;
 			if(parsed.path[0] === "/") result.absolutePathReference = parsed.path+qf;
 			if(parts && parts.relativePath !== void 0) result.relativePathReference = parts.relativePath+qf;
