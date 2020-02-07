@@ -60,7 +60,7 @@ Returns an object containing the normalized host and its parts. Null if the host
 
 ## Paths
 
-**<samp style="background-color:transparent">ParseURI.resolveRelativePath(*path*)</samp>**
+**<samp style="background-color:transparent">ParseURI.resolveRelativePath(*path*, *isPartial*)</samp>**
 
 Minimizes a path by resolving or removing "." and ".." segments.
 
