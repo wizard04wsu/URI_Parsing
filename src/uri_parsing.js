@@ -160,12 +160,12 @@
 			
 			if(authority || fragment) return null;
 			
-				let ret = new String(uri);
-				ret.uri = uri;
-				ret.scheme = scheme;
-				ret.path = path;
-				ret.query = parseQuery(query);
-				return ret;
+			let ret = new String(uri);
+			ret.uri = uri;
+			ret.scheme = scheme;
+			ret.path = path;
+			ret.query = parseQuery(query);
+			return parseMailto(ret);
 			
 		}
 		else{
