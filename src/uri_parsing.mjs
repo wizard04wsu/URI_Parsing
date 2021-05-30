@@ -22,31 +22,83 @@
  *   RFC 5234 "Augmented BNF for Syntax Specifications: ABNF"   https://tools.ietf.org/html/rfc5234#appendix-B.1
  */
 
+// https://github.com/wizard04wsu/URI_Parsing
 
-function defineProperty(object, propertyName, value, isWritable, isEnumerable, isConfigurable){
-	Object.defineProperty(object, propertyName, { value:value, writable:isWritable, enumerable:isEnumerable, configurable:isConfigurable });
-}
+/** @module URI */
+
+export { URI as default, fixHyperlink };
 
 
+/**
+ * Object containing a URI and its parts. The members vary depending on the scheme.
+ * @typedef {object} ParsedURI
+ * @property {string} uri - Normalized URI.
+ * @property {string} scheme
+ * @property {ParsedURI_authority|undefined} authority
+ * @property {string} path
+ * @property {string|ParsedURI_query} query
+ * @property {string} fragment
+ */
+/**
+ * @typedef {String} ParsedURI_authority
+ * @property {string} userinfo
+ * @property {string|ParsedURI_host} host
+ * @property {string} port
+ */
+/**
+ * @typedef {String} ParsedURI_host
+ * @property {Array.<string>|undefined} labels - Labels within a domain name. Undefined if it's an IP.
+ * @property {string|undefined} ip - IP address (IPv4 if possible).
+ * @property {string|undefined} ipv4 - IPv4 version of the IP.
+ * @property {string|undefined} ipv6 - IPv6 version of the IP.
+ */
+/**
+ * @typedef {String} ParsedURI_query
+ * @property {Object.<string, string>} pairs - Array of decoded name/value pairs.
+ */
+
+
+/**
+ * @alias module:URI-URI
+ * @class
+ * @param {string} uri
+ */
 function URI(uri){
 	
 	if(this instanceof URI){
-	//a new instance is being created (most likely)
+		//a new instance is being created (or something to that effect)
+		
+		/** @member {string} */
 		this.original = uri;
+		
 		const parsed = parseURI(uri);
 		for(const prop in Object.getOwnPropertyNames(parsed)){
 			this[prop] = parsed[prop];
 		}
-		defineProperty(this, "toString", function toString(){ return this.uri; }, true, false, true);
+		
+		Object.defineProperty(this, "toString", {
+			writable: true, enumerable: false, configurable: true,
+			value: function toString(){ return this.uri; }
+		});
 	}
 	else{
-	//the function was called without the `new` keyword
+		//the function was called without the `new` keyword
+		
 		return new URI(uri);
 	}
 	
 }
 
-defineProperty(URI, "schemeParsers", {}, true, false, true);
+/**
+ * A customizable collection of scheme-specific parsing functions.
+ * @static
+ * @name schemeParsers
+ * @type {object}
+ */
+Object.defineProperty(URI, "schemeParsers", {
+	writable: true, enumerable: false, configurable: true,
+	value: {}
+});
 
 URI.normalizeDomain = normalizeDNSHost;
 URI.normalizePath = removeDotSegments;
@@ -58,20 +110,8 @@ URI.parseEmailAddress = parseEmailAddress;
  * Validates and normalizes a URI, and splits it into its parts.
  * 
  * @param {string} uri
- * @return {object} - Object containing the URI and its parts. Null if the URI is invalid. The members depend on if the scheme is http, https, mailto, or something else. Possible members:
- *   {string} .uri - The normalized URI.
- *   {string} .scheme
- *   {String} .authority
- *     {string} .authority.userinfo
- *     {String} .authority.host
- *       {array} .authority.host.labels - Array of labels within a domain name. Undefined if it's an IP.
- *       {string} .authority.host.ip - IP address (IPv4 if possible).
- *       {string} .authority.host.ipv4 - IPv4 version of the IP.
- *       {string} .authority.host.ipv6 - IPv6 version of the IP.
- *     {string} .authority.port
- *   {String} .query
- *     {array} .query.pairs - For http/https/mailto URIs. An array of decoded name/value pairs (each pair is an object {name, value}).
- *   {string} .fragment
+ * @returns {ParsedURI|null} - Object containing the URI and its parts. The members vary depending on the scheme. Null if the URI is invalid.
+ * 
  *   {array} .to - For mailto URIs. Array of valid email addresses.
  *   {array} .cc - For mailto URIs. Array of valid email addresses.
  *   {array} .bcc - For mailto URIs. Array of valid email addresses.
@@ -83,41 +123,9 @@ URI.parseEmailAddress = parseEmailAddress;
  */
 function parseURI(uri){
 	
-	uri = ""+uri;
+	if(uri === void 0 || uri === null || uri == "") return null;
 	
-	let rxp = /^(?=(?<scheme>[a-z][a-z\d+.-]*))\1:(?:\/\/(?<authority>(?:(?=(?<userinfo>(?:[\w-.~!$&'()*+,;=:]|%[\dA-F]{2})*))\3@)?(?=(?<host>\[[\dA-F:.]{2,}\]|(?:[\w-.~!$&'()*+,;=]|%[\dA-F]{2})*))\4(?::(?=(?<port>\d*))\5)?)(?<path1>\/(?=((?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\7)?|(?<path2>\/?(?!\/)(?=((?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\9)?)(?:\?(?=(?<query>(?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\10)?(?:#(?=(?<fragment>(?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\11)?$/ui;
-	/*Composed as follows:
-		^
-		(?=(?<scheme>[a-z][a-z\d+.-]*))\1:												#1 scheme
-		(?:
-			\/\/
-			(?<authority>
-				(?:
-					(?=(?<userinfo>(?:[\w-.~!$&'()*+,;=:]|%[\dA-F]{2})*))\3				#3 userinfo
-					@
-				)?
-				(?=(?<host>\[[\dA-F:.]{2,}\]|(?:[\w-.~!$&'()*+,;=]|%[\dA-F]{2})*))\4	#4 host (loose check)
-				(?:
-					:
-					(?=(?<port>\d*))\5													#5 port
-				)?
-			)																			#2 authority
-			(?<path1>\/(?=((?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\7)?					#6 path (after authority)
-			
-			|
-			
-			(?<path2>\/?(?!\/)(?=((?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\9)?			#8 path (no authority)
-		)
-		(?:
-			\?
-			(?=(?<query>(?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\10					#10 query
-		)?
-		(?:
-			#
-			(?=(?<fragment>(?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\11					#11 fragment
-		)?
-		$
-	*/
+	uri = ""+uri;
 	
 	/*Characters:
 		unreserved: [A-Za-z0-9-._~]
@@ -127,7 +135,44 @@ function parseURI(uri){
 		pct-encoded: %[0-9A-Fa-f]{2}
 	*/
 	
-	let parts = rxp.exec(uri);
+	//*** browsers still don't support named capture as of May 2021 ***
+	
+	//let rxp = /^(?=(?<scheme>[a-z][a-z\d+.-]*))\k<scheme>:(?:\/\/(?<authority>(?:(?=(?<userinfo>(?:[\w-.~!$&'()*+,;=:]|%[\dA-F]{2})*))\k<userinfo>@)?(?=(?<host>\[[\dA-F:.]{2,}\]|(?:[\w-.~!$&'()*+,;=]|%[\dA-F]{2})*))\k<host>(?::(?=(?<port>\d*))\k<port>)?)(?<path1>\/(?=(?<_path1>(?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\k<_path1>)?|(?<path2>\/?(?!\/)(?=(?<_path2>(?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\k<_path2>)?)(?:\?(?=(?<query>(?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\k<query>)?(?:#(?=(?<fragment>(?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\k<fragment>)?$/ui;
+	
+	/*Composed as follows:
+		^
+		(?=(?<scheme>[a-z][a-z\d+.-]*))\k<scheme>:													1 scheme
+		(?:
+			\/\/
+			(?<authority>
+				(?:
+					(?=(?<userinfo>(?:[\w-.~!$&'()*+,;=:]|%[\dA-F]{2})*))\k<userinfo>				3 userinfo
+					@
+				)?
+				(?=(?<host>\[[\dA-F:.]{2,}\]|(?:[\w-.~!$&'()*+,;=]|%[\dA-F]{2})*))\k<host>			4 host (loose check)
+				(?:
+					:
+					(?=(?<port>\d*))\k<port>														5 port
+				)?
+			)																						2 authority
+			(?<path1>\/(?=(?<_path1>(?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\k<_path1>)?			6 path (after authority)
+			
+			|
+			
+			(?<path2>\/?(?!\/)(?=(?<_path2>(?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\k<_path2>)?		8 path (no authority)
+		)
+		(?:
+			\?
+			(?=(?<query>(?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\k<query>							10 query
+		)?
+		(?:
+			#
+			(?=(?<fragment>(?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\k<fragment>					11 fragment
+		)?
+		$
+	*/
+	
+	/*let parts = rxp.exec(uri);
 	if(!parts) return null;	//invalid URI
 	parts = parts.groups;
 	
@@ -138,7 +183,58 @@ function parseURI(uri){
 		port = parts.port,
 		path = normalizePath(parts.path1 || parts.path2),
 		query = normalizeQueryOrFragment(parts.query),
-		fragment = normalizeQueryOrFragment(parts.fragment);
+		fragment = normalizeQueryOrFragment(parts.fragment);*/
+	
+	//*** so we'll use numbered capture instead ***
+	
+	let rxp = /^(?=([a-z][a-z\d+.-]*))\1:(?:\/\/((?:(?=((?:[\w-.~!$&'()*+,;=:]|%[\dA-F]{2})*))\3@)?(?=(\[[\dA-F:.]{2,}\]|(?:[\w-.~!$&'()*+,;=]|%[\dA-F]{2})*))\4(?::(?=(\d*))\5)?)(\/(?=((?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\7)?|(\/?(?!\/)(?=((?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\9)?)(?:\?(?=((?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\10)?(?:#(?=((?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\11)?$/ui;
+	
+	/*Composed as follows:
+		^
+		(?=([a-z][a-z\d+.-]*))\1:												1 scheme
+		(?:
+			\/\/
+			(
+				(?:
+					(?=((?:[\w-.~!$&'()*+,;=:]|%[\dA-F]{2})*))\3				3 userinfo
+					@
+				)?
+				(?=(\[[\dA-F:.]{2,}\]|(?:[\w-.~!$&'()*+,;=]|%[\dA-F]{2})*))\4	4 host (loose check)
+				(?:
+					:
+					(?=(\d*))\5													5 port
+				)?
+			)																	2 authority
+			(\/(?=((?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\7)?					6 path (after authority)
+			
+			|
+			
+			(\/?(?!\/)(?=((?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\9)?			8 path (no authority)
+		)
+		(?:
+			\?
+			(?=((?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\10					10 query
+		)?
+		(?:
+			#
+			(?=((?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\11					11 fragment
+		)?
+		$
+	*/
+	
+	let parts = rxp.exec(uri);
+	if(!parts) return null;	//invalid URI
+	
+	let scheme = parts[1].toLowerCase(),
+		authority = parts[2],
+		userinfo = parts[3],
+		host = parts[4],
+		port = parts[5],
+		path = normalizePath(parts[6] || parts[8]),
+		query = normalizeQueryOrFragment(parts[10]),
+		fragment = normalizeQueryOrFragment(parts[11]);
+	
+	//*** do some basic normalization and parsing ***
 	
 	if(authority){
 		if((host = normalizeHost(host)) === null) return null;	//invalid host
@@ -147,18 +243,20 @@ function parseURI(uri){
 	
 	uri = scheme+":" + (authority !== (void 0) ? "//"+authority : "") + path + (query ? "?"+query : "") + (fragment ? "#"+fragment : "");
 	
-	let parsed = new String(uri);
+	const parsed = new String(uri);
 	parsed.uri = uri;
 	parsed.scheme = scheme;
 	if(authority){
-		parsed.authority = new String(authority);
-		parsed.authority.userinfo = userinfo;
-		parsed.authority.host = host;
-		parsed.authority.port = port;
+		const a = parsed.authority = new String(authority);
+		a.userinfo = userinfo;
+		a.host = host;
+		a.port = port;
 	}
 	parsed.path = path;
-	parsed.query = new String(query);
+	parsed.query = query;
 	parsed.fragment = fragment;
+	
+	//*** do scheme-specific normalization and parsing, if applicable ***
 	
 	if(URI.schemeParsers && URI.schemeParsers[scheme] instanceof Function) return URI.schemeParsers[scheme](parsed);
 	return parsed;
@@ -218,14 +316,16 @@ function normalizeHost(host, useMixedNotation = true){
 	if(host === "") return "";
 	host = ""+host;
 	
-	if((/^\[.*\]$/i).test(host) && (let ip = normalizeIPv6(host.slice(1, -1), useMixedNotation)) ) return "["+ip+"]";	//it's a valid IPv6 address
+	let ip;
+	
+	if((/^\[.*\]$/i).test(host) && (/*let*/ ip = normalizeIPv6(host.slice(1, -1), useMixedNotation)) ) return "["+ip+"]";	//it's a valid IPv6 address
 	
 	if(!(/^(?:[0-9a-z!$&'()*+,\-.;=_~]|%[0-9A-F]{2})*$/i).test(host)) return null;	//contains invalid characters
 	
 	//decode percent encodings of unreserved characters: DIGIT ALPHA -._~
 	host = host.replace(/%(2[DE]|3\d|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
 	
-	if( (let ip = normalizeIPv4(host)) ) return ip;	//it's a valid IPv4 address
+	if( (/*let*/ ip = normalizeIPv4(host)) ) return ip;	//it's a valid IPv4 address
 	
 	//make percent encodings upper case; everything else lower case
 	host = host.toLowerCase();
@@ -1332,6 +1432,3 @@ function fixHyperlink(href){
 	return null;	//can't fix it
 	
 };
-
-
-export { URI as default, fixHyperlink };

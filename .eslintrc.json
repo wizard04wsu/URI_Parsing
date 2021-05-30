@@ -1,0 +1,13 @@
+{
+	"env": "es6",
+	"extends": "eslint:recommended",
+	"ecmaFeatures": {
+		"impliedStrict": true
+	}
+	"files": [
+		{
+			"patterns": [ "**/*.mjs", "**/*.mjs.js" ],
+			"sourceType": "module"
+		}
+	],
+}
