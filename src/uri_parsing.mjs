@@ -223,7 +223,7 @@ function parseURI(uri){
 	uri = scheme+":" + (authority !== (void 0) ? "//"+authority : "") + path + (query ? "?"+query : "") + (fragment ? "#"+fragment : "");
 	
 	const parsed = new String(uri);
-	parsed.orginail = original;
+	parsed.orginal = original;
 	parsed.uri = uri;
 	parsed.scheme = scheme;
 	if(authority){
@@ -258,78 +258,185 @@ Object.defineProperty(URI, "schemeParsers", {
 
 /**
  * Scheme-specific parser for http URIs
- * @param {ParsedURI} parsed
+ * @param {ParsedURI} parsed - This object is modified by the function.
  * @returns {ParsedURI}
  */
 URI.schemeParsers.http = p=>{
 	let host = normalizeDNSHost(p.host);
 	if(!host) return null;
 	
-	let port = p.port || "80";
-	let authority = (p.userinfo ? p.userinfo+"@" : "") + host + (port==="80" ? "" : ":"+port);
-	let path = removeDotSegments(p.path) || "/";
-	let query = parseQuery(p.query);
+	p.host = host;
+	p.port = p.port || "80";
+	p.authority = new String( (p.userinfo ? p.userinfo+"@" : "") + p.host + (p.port==="80" ? "" : ":"+p.port) );
+	p.path = removeDotSegments(p.path) || "/";
+	p.query = parseQuery(p.query);
 	
-	let uri = p.scheme+"://"+authority + path + (query ? "?"+query : "") + (p.fragment ? "#"+p.fragment : "");
+	p.uri = p.scheme+"://"+p.authority + p.path + (p.query ? "?"+p.query : "") + (p.fragment ? "#"+p.fragment : "");
 	
-	let ret = new String(uri);
-	ret.uri = uri;
-	ret.scheme = p.scheme;
-	ret.authority = new String(authority);
-	ret.authority.userinfo = p.userinfo;
-	ret.authority.host = host;
-	ret.authority.port = port;
-	ret.path = path;
-	ret.query = query;
-	ret.fragment = p.fragment;
-	return ret;
+	return p;
 };
 
 /**
  * Scheme-specific parser for https URIs
- * @param {ParsedURI} parsed
+ * @param {ParsedURI} parsed - This object is modified by the function.
  * @returns {ParsedURI}
  */
 URI.schemeParsers.https = p=>{
 	let host = normalizeDNSHost(p.host);
 	if(!host) return null;
 	
-	let port = p.port || "443";
-	let authority = (p.userinfo ? p.userinfo+"@" : "") + host + (port==="443" ? "" : ":"+port);
-	let path = removeDotSegments(p.path) || "/";
-	let query = parseQuery(p.query);
+	p.host = host;
+	p.port = p.port || "443";
+	p.authority = new String( (p.userinfo ? p.userinfo+"@" : "") + p.host + (p.port==="443" ? "" : ":"+p.port) );
+	p.path = removeDotSegments(p.path) || "/";
+	p.query = parseQuery(p.query);
 	
-	let uri = p.scheme+"://"+authority + path + (query ? "?"+query : "") + (p.fragment ? "#"+p.fragment : "");
+	p.uri = p.scheme+"://"+p.authority + p.path + (p.query ? "?"+p.query : "") + (p.fragment ? "#"+p.fragment : "");
 	
-	let ret = new String(uri);
-	ret.uri = uri;
-	ret.scheme = p.scheme;
-	ret.authority = new String(authority);
-	ret.authority.userinfo = p.userinfo;
-	ret.authority.host = host;
-	ret.authority.port = port;
-	ret.path = path;
-	ret.query = query;
-	ret.fragment = p.fragment;
-	return ret;
+	return p;
 };
 
 /**
  * Scheme-specific parser for mailto URIs
- * @param {ParsedURI} parsed
+ * @param {ParsedURI} parsed - This object is modified by the function.
  * @returns {ParsedURI}
  */
 URI.schemeParsers.mailto = p=>{
 	if(p.authority) return null;
 	
-	let uri = p.scheme+":" + p.path + (p.query ? "?"+p.query : "");
+	p.uri = p.scheme+":" + p.path + (p.query ? "?"+p.query : "");
+	p.query = parseQuery(p.query);
+	p.fragment = "";
 	
-	let ret = new String(uri);
-	ret.uri = uri;
-	ret.scheme = p.scheme;
-	ret.path = p.path;
-	ret.query = parseQuery(p.query);
-	return parseMailto(ret);
+	p.to = [];
+	p.cc = [];
+	p.bcc = [];
+	p.subject = "";
+	p.body = "";
+	p.headers = [];	//other headers besides the above (each header is an object {name, value})
+	
+	//splits the string at the commas (ignoring commas within quoted strings or comments)
+	//returns an array of valid email addresses
+	function splitEmailAddresses(str){
+		
+		let parts = str.split(","),
+			commentLevel = 0,
+			inQuote = false,
+			addresses = [];
+		
+		while(parts.length){
+			
+			//decode percent-encoded characters
+			parts[0] = decodeURIComponent(parts[0]);
+			
+			//determine if inside a comment or a quoted string
+			let rxp = /(?:^|[^\\()"])(?:\\\\)*([()"])/ug,
+				c;
+			while(c = rxp.exec(parts[0])){
+				if(!inQuote){
+					if(c[1] === "(") commentLevel++;
+					else if(c[1] === ")") commentLevel--;
+					else inQuote = true;
+				}
+				else if(c[1] === "\""){
+					inQuote = false;
+				}
+			}
+			
+			if(inQuote || commentLevel > 0){	//inside a quoted string or a comment
+				if(parts[1]){	//if there is another part
+					//concatenate the first two parts and try again
+					parts[1] = parts[0] + "," + parts[1];
+					inQuote = false;
+					commentLevel = 0;
+				}
+				//else there are no more parts; still inside a comment or quoted string; invalid address
+			}
+			else{
+				let parsed = parseEmailAddress(parts[0]);
+				if(parsed && !parsed.unrecognizedDomain){	//it's a valid address
+					addresses.push(parsed.display ? parsed.full : parsed.simple);
+				}
+				//else it's an invalid address
+			}
+			//else there is an extra closing parenthesis; invalid address
+			
+			parts.shift();
+			
+		}
+		
+		return addresses;
+		
+	}
+	
+	function encodePart(str){
+		return encodeURI(str).replace(/[\/?&=#]/g, function (match){ return "%"+match.charCodeAt(0).toString(16).toUpperCase(); });
+	}
+	
+	{
+		
+		p.to = p.path ? splitEmailAddresses(p.path) : [];
+		
+		let headers = p.query.pairs || [];
+		for(let i=0; i<headers.length; i++){
+			if(headers[i].value === "") continue;
+			
+			headers[i].name = decodeURIComponent(headers[i].name);
+			if(headers[i].name === "to")
+				p.to = p.to.concat(splitEmailAddresses(headers[i].value));
+			else if(headers[i].name === "cc")
+				p.cc = p.cc.concat(splitEmailAddresses(headers[i].value));
+			else if(headers[i].name === "bcc")
+				p.bcc = p.bcc.concat(splitEmailAddresses(headers[i].value));
+			else if(headers[i].name === "subject")
+				p.subject += decodeURIComponent(headers[i].value);
+			else if(headers[i].name === "body")
+				p.body += decodeURIComponent(headers[i].value);
+			else{
+				headers[i].value = decodeURIComponent(headers[i].value);
+				p.headers.push(headers[i]);
+			}
+		}
+		
+		if(p.to.length + p.cc.length + p.bcc.length === 0) return null;	//no destination
+		
+	}
+	
+	{
+		
+		p.path = encodePart(p.to.join(","));
+		
+		let query = "";
+		if(p.cc.length){
+			query += "cc=" + encodePart(p.cc.join(","));
+		}
+		if(p.bcc.length){
+			if(query) query += "&";
+			query += "bcc=" + encodePart(p.bcc.join(","));
+		}
+		if(p.subject){
+			if(query) query += "&";
+			query += "subject=" + encodePart(p.subject);
+		}
+		if(p.body){
+			if(query) query += "&";
+			query += "body=" + encodePart(p.body);
+		}
+		if(p.headers.length){
+			for(i=0; i<p.headers.length; i++){
+				if(query) query += "&";
+				query += encodePart(p.headers[i].name) + "=" + encodePart(p.headers[i].value);
+			}
+		}
+		
+		p.uri = "mailto:" + p.path + (query ? "?"+query : "");
+		
+		p.query = parseQuery(query);
+		
+	}
+	
+	return p;
+	
 };
 
 /**
@@ -738,160 +845,6 @@ function parseQuery(query){
 	query.pairs = results;
 	
 	return query;
-	
-};
-
-/**
- * Splits a mailto scheme URI into its parts.
- * @private
- * @param {object} parts - Object containing the URI, scheme, path, and query object.
- * @return {object} - Object containing the following. Null if the URI is invalid or there is no valid destination.
- *   {string} .uri - normalized URI
- *   {string} .scheme - "mailto"
- *   {string} .path
- *   {String} .query
- *     {array} .query.pairs - Array of name/value pairs (each pair is an object {name, value}).
- *   {array} .to
- *   {array} .cc
- *   {array} .bcc
- *   {string} .subject - Multiple "subject" headers are combined.
- *   {string} .body - Multiple "body" headers are combined.
- *   {array} .headers - Array containing any additional headers (each header is an object {name, value}).
- * 
- * Invalid destinations are discarded.
- * 
- * See: RFC 6068   https://tools.ietf.org/html/rfc6068
- */
-function parseMailto(parts){
-	
-	//splits the string at the commas (ignoring commas within quoted strings or comments)
-	//returns an array of valid email addresses
-	function splitEmailAddresses(str){
-		
-		let parts = str.split(","),
-			commentLevel = 0,
-			inQuote = false,
-			addresses = [];
-		
-		while(parts.length){
-			
-			//decode percent-encoded characters
-			parts[0] = decodeURIComponent(parts[0]);
-			
-			//determine if inside a comment or a quoted string
-			let rxp = /(?:^|[^\\()"])(?:\\\\)*([()"])/g,
-				c;
-			while(c = rxp.exec(parts[0])){
-				if(!inQuote){
-					if(c[1] === "(") commentLevel++;
-					else if(c[1] === ")") commentLevel--;
-					else inQuote = true;
-				}
-				else if(c[1] === "\""){
-					inQuote = false;
-				}
-			}
-			
-			if(inQuote || commentLevel > 0){	//inside a quoted string or a comment
-				if(parts[1]){	//if there is another part
-					//concatenate the first two parts and try again
-					parts[1] = parts[0] + "," + parts[1];
-					inQuote = false;
-					commentLevel = 0;
-				}
-				//else there are no more parts; still inside a comment or quoted string; invalid address
-			}
-			else{
-				let parsed = parseEmailAddress(parts[0]);
-				if(parsed && !parsed.unrecognizedDomain){	//it's a valid address
-					addresses.push(parsed.display ? parsed.full : parsed.simple);
-				}
-				//else it's an invalid address
-			}
-			//else there is an extra closing parenthesis; invalid address
-			
-			parts.shift();
-			
-		}
-		
-		return addresses;
-		
-	}
-	
-	function encodePart(str){
-		return encodeURI(str).replace(/[\/?&=#]/g, function (match){ return "%"+match.charCodeAt(0).toString(16).toUpperCase(); });
-	}
-	
-	parts.to = [];
-	parts.cc = [];
-	parts.bcc = [];
-	parts.subject = "";
-	parts.body = "";
-	parts.headers = [];	//other headers besides the above (each header is an object {name, value})
-	
-	{
-		
-		parts.to = parts.path ? splitEmailAddresses(parts.path) : [];
-		
-		let headers = parts.query.pairs || [];
-		for(let i=0; i<headers.length; i++){
-			if(headers[i].value === "") continue;
-			
-			headers[i].name = decodeURIComponent(headers[i].name);
-			if(headers[i].name === "to")
-				parts.to = parts.to.concat(splitEmailAddresses(headers[i].value));
-			else if(headers[i].name === "cc")
-				parts.cc = parts.cc.concat(splitEmailAddresses(headers[i].value));
-			else if(headers[i].name === "bcc")
-				parts.bcc = parts.bcc.concat(splitEmailAddresses(headers[i].value));
-			else if(headers[i].name === "subject")
-				parts.subject += decodeURIComponent(headers[i].value);
-			else if(headers[i].name === "body")
-				parts.body += decodeURIComponent(headers[i].value);
-			else{
-				headers[i].value = decodeURIComponent(headers[i].value);
-				parts.headers.push(headers[i]);
-			}
-		}
-		
-		if(parts.to.length + parts.cc.length + parts.bcc.length === 0) return null;	//no destination
-		
-	}
-	
-	{
-		
-		parts.path = encodePart(parts.to.join(","));
-		
-		let query = "";
-		if(parts.cc.length){
-			query += "cc=" + encodePart(parts.cc.join(","));
-		}
-		if(parts.bcc.length){
-			if(query) query += "&";
-			query += "bcc=" + encodePart(parts.bcc.join(","));
-		}
-		if(parts.subject){
-			if(query) query += "&";
-			query += "subject=" + encodePart(parts.subject);
-		}
-		if(parts.body){
-			if(query) query += "&";
-			query += "body=" + encodePart(parts.body);
-		}
-		if(parts.headers.length){
-			for(i=0; i<parts.headers.length; i++){
-				if(query) query += "&";
-				query += encodePart(parts.headers[i].name) + "=" + encodePart(parts.headers[i].value);
-			}
-		}
-		
-		parts.uri = "mailto:" + parts.path + (query ? "?"+query : "");
-		
-		parts.query = parseQuery(query);
-		
-	}
-	
-	return parts;
 	
 };
 
