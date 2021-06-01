@@ -253,12 +253,35 @@ function parseURI(uri){
 	
 };
 
-URI.schemeParsers.http = URI.schemeParsers.https = p=>{
+URI.schemeParsers.http = p=>{
 	let host = normalizeDNSHost(p.host);
 	if(!host) return null;
 	
-	let port = p.port || (p.scheme === "http" ? "80" : "443");
-	let authority = (p.userinfo ? p.userinfo+"@" : "") + host + ((p.scheme==="http" && port==="80") || (p.scheme==="https" && port==="443") ? "" : ":"+port);
+	let port = p.port || "80";
+	let authority = (p.userinfo ? p.userinfo+"@" : "") + host + (port==="80" ? "" : ":"+port);
+	let path = removeDotSegments(p.path) || "/";
+	let query = parseQuery(p.query);
+	
+	let uri = p.scheme+"://"+authority + path + (query ? "?"+query : "") + (p.fragment ? "#"+p.fragment : "");
+	
+	let ret = new String(uri);
+	ret.uri = uri;
+	ret.scheme = p.scheme;
+	ret.authority = new String(authority);
+	ret.authority.userinfo = p.userinfo;
+	ret.authority.host = host;
+	ret.authority.port = port;
+	ret.path = path;
+	ret.query = query;
+	ret.fragment = p.fragment;
+	return ret;
+};
+URI.schemeParsers.https = p=>{
+	let host = normalizeDNSHost(p.host);
+	if(!host) return null;
+	
+	let port = p.port || "443";
+	let authority = (p.userinfo ? p.userinfo+"@" : "") + host + (port==="443" ? "" : ":"+port);
 	let path = removeDotSegments(p.path) || "/";
 	let query = parseQuery(p.query);
 	
