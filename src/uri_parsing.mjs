@@ -1,4 +1,4 @@
-/**
+/*
  * URI(uri)
  * URI.domain(host)
  * URI.resolveRelativePath(path, isPartial)
@@ -32,6 +32,7 @@ export { URI as default, fixHyperlink };
 /**
  * Object containing a URI and its parts. The members vary depending on the scheme.
  * @typedef {object} ParsedURI
+ * @property {string} original - Original URI.
  * @property {string} uri - Normalized URI.
  * @property {string} scheme
  * @property {ParsedURI_authority|undefined} authority
@@ -59,34 +60,22 @@ export { URI as default, fixHyperlink };
 
 
 /**
- * @alias module:URI-URI
- * @class
+ * Creates an object containing the normalized URI and its parts. The members vary depending on the scheme. Null if the URI is invalid.
+ * @alias module:URI
  * @param {string} uri
+ * @returns {ParsedURI|null}
  */
 function URI(uri){
+	const parsed = parseURI(uri);
 	
-	if(this instanceof URI){
-		//a new instance is being created (or something to that effect)
-		
-		/** @member {string} */
-		this.original = uri;
-		
-		const parsed = parseURI(uri);
-		for(const prop in Object.getOwnPropertyNames(parsed)){
-			this[prop] = parsed[prop];
-		}
-		
-		Object.defineProperty(this, "toString", {
-			writable: true, enumerable: false, configurable: true,
-			value: function toString(){ return this.uri; }
-		});
-	}
-	else{
-		//the function was called without the `new` keyword
-		
-		return new URI(uri);
-	}
+	if(parsed === null) return null;
 	
+	Object.defineProperty(parsed, "toString", {
+		writable: true, enumerable: false, configurable: true,
+		value: function toString(){ return this.uri; }
+	});
+	
+	return parsed;
 }
 
 /**
@@ -108,7 +97,7 @@ URI.parseEmailAddress = parseEmailAddress;
 
 /**
  * Validates and normalizes a URI, and splits it into its parts.
- * 
+ * @private
  * @param {string} uri
  * @returns {ParsedURI|null} - Object containing the URI and its parts. The members vary depending on the scheme. Null if the URI is invalid.
  * 
@@ -125,7 +114,7 @@ function parseURI(uri){
 	
 	if(uri === void 0 || uri === null || uri == "") return null;
 	
-	uri = ""+uri;
+	const original = uri = ""+uri;
 	
 	/*Characters:
 		unreserved: [A-Za-z0-9-._~]
@@ -238,12 +227,13 @@ function parseURI(uri){
 	
 	if(authority){
 		if((host = normalizeHost(host)) === null) return null;	//invalid host
-		authority = (userinfo ? userinfo+"@" : "") + host + (port ? ":"+port : "");	//normalize authority
+		authority = (userinfo ? userinfo+"@" : "") + host + (port ? ":"+port : "");
 	}
 	
 	uri = scheme+":" + (authority !== (void 0) ? "//"+authority : "") + path + (query ? "?"+query : "") + (fragment ? "#"+fragment : "");
 	
 	const parsed = new String(uri);
+	parsed.orginail = original;
 	parsed.uri = uri;
 	parsed.scheme = scheme;
 	if(authority){
@@ -301,7 +291,7 @@ URI.schemeParsers.mailto = p=>{
 
 /**
  * Converts an obscured host to a more readable one.
- * 
+ * @private
  * @param {string} host
  * @param {boolean} useMixedNotation - Mix hexadecimal and dot-decimal notations to represent IPv4-mapped IPv6 addresses. Default is true (recommended per RFC 5952, section 5).
  * @return {string} - The normalized host. Null if the host is invalid.
@@ -337,7 +327,7 @@ function normalizeHost(host, useMixedNotation = true){
 
 /**
  * Converts an obscured host to a more readable one. Only DNS domains or IPs are deemed valid.
- * 
+ * @private
  * @param {string} host
  * @param {boolean} useMixedNotation - Mix hexadecimal and dot-decimal notations to represent IPv4-mapped IPv6 addresses. Default is true (recommended per RFC 5952, section 5).
  * @return {String} - Value is the host. Attributes include the host and its parts. Null if the host is invalid. Possible attributes:
@@ -404,7 +394,7 @@ function v4to6(ip){
 
 /**
  * Converts a normalized IPv6 address to the four 8-bit decimal values of an IPv4 address, if possible.
- * 
+ * @private
  * @param {string} ip - Normalized IPv6 address.
  * @return {string} - IPv4 address. Undefined if it can't be converted.
  * 
@@ -425,7 +415,7 @@ function v6to4(ip){
 
 /**
  * Normalizes an IPv4 address.
- * 
+ * @private
  * @param {string} ip - IPv6 address.
  * @param {boolean} [useMixedNotation] - Mix hexadecimal and dotted-decimal notations to represent an IPv4-mapped IPv6 address. Default is true (recommended per RFC 5952, section 5).
  * @return {string} - Normalized IPv6 address. Null if it's invalid.
@@ -480,7 +470,7 @@ function normalizeIPv4(ip){
 
 /**
  * Normalizes an IPv6 address.
- * 
+ * @private
  * @param {string} ip - IPv6 address.
  * @param {boolean} useMixedNotation - Mix hexadecimal and dot-decimal notations to represent IPv4-mapped IPv6 addresses. Default is true (recommended per RFC 5952, section 5).
  * @return {string} - Normalized IPv6 address. Null if it's invalid.
@@ -596,7 +586,7 @@ function normalizeIPv6(ip, useMixedNotation = true){
 
 /**
  * Converts and obscured path to a more readable one.
- * 
+ * @private
  * @param {string} path
  * @return {string}
  * 
@@ -621,7 +611,7 @@ function normalizePath(path){
 
 /**
  * Removes dot-segments from a relative reference.
- * 
+ * @private
  * @param {string} path
  * @return {string}
  * 
@@ -648,7 +638,7 @@ function removeDotSegments(path){
 
 /**
  * Converts an obscured query string or fragment to a more readable one.
- * 
+ * @private
  * @param {string} queryOrFragment
  * @return {string}
  * 
@@ -667,7 +657,7 @@ function normalizeQueryOrFragment(queryOrFragment){
 
 /**
  * Parses a query string as a sequence of name/value pairs.
- * 
+ * @private
  * @param {string} query
  * @return {String} - The normalized query.
  *   {array} .pairs - Array of name/value pairs (each pair is an object {name, value}).
@@ -704,7 +694,7 @@ function parseQuery(query){
 
 /**
  * Splits a mailto scheme URI into its parts.
- * 
+ * @private
  * @param {object} parts - Object containing the URI, scheme, path, and query object.
  * @return {object} - Object containing the following. Null if the URI is invalid or there is no valid destination.
  *   {string} .uri - normalized URI
@@ -858,7 +848,7 @@ function parseMailto(parts){
 
 /**
  * Normalizes a single email address (mailbox) and splits it into its parts.
- * 
+ * @private
  * @param {string} address - email address or mailbox (mailbox example: "John Doe" <john.doe@example.com> )
  * @return {object} - Object containing the mailbox and its parts. Null if it's invalid.
  *   {string} .full - If there is a display name: "display name" <local@domain>
