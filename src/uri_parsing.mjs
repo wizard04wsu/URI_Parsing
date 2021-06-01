@@ -78,18 +78,8 @@ function URI(uri){
 	return parsed;
 }
 
-/**
- * A customizable collection of scheme-specific parsing functions.
- * @static
- * @name schemeParsers
- * @type {object}
- */
-Object.defineProperty(URI, "schemeParsers", {
-	writable: true, enumerable: false, configurable: true,
-	value: {}
-});
-
-URI.normalizeDomain = normalizeDNSHost;
+URI.normalizeHost = normalizeHost;
+URI.normalizeDNSHost = normalizeDNSHost;
 URI.normalizePath = removeDotSegments;
 URI.parseQuery = parseQuery;
 URI.parseEmailAddress = parseEmailAddress;
@@ -248,11 +238,29 @@ function parseURI(uri){
 	
 	//*** do scheme-specific normalization and parsing, if applicable ***
 	
-	if(URI.schemeParsers && URI.schemeParsers[scheme] instanceof Function) return URI.schemeParsers[scheme](parsed);
+	if(URI.schemeParsers && URI.schemeParsers[scheme] instanceof Function){
+		return URI.schemeParsers[scheme](parsed);
+	}
 	return parsed;
 	
 };
 
+/**
+ * A customizable collection of scheme-specific parsing functions.
+ * @static
+ * @name schemeParsers
+ * @type {object}
+ */
+Object.defineProperty(URI, "schemeParsers", {
+	writable: true, enumerable: false, configurable: true,
+	value: {}
+});
+
+/**
+ * Scheme-specific parser for http URIs
+ * @param {ParsedURI} parsed
+ * @returns {ParsedURI}
+ */
 URI.schemeParsers.http = p=>{
 	let host = normalizeDNSHost(p.host);
 	if(!host) return null;
@@ -276,6 +284,12 @@ URI.schemeParsers.http = p=>{
 	ret.fragment = p.fragment;
 	return ret;
 };
+
+/**
+ * Scheme-specific parser for https URIs
+ * @param {ParsedURI} parsed
+ * @returns {ParsedURI}
+ */
 URI.schemeParsers.https = p=>{
 	let host = normalizeDNSHost(p.host);
 	if(!host) return null;
@@ -299,6 +313,12 @@ URI.schemeParsers.https = p=>{
 	ret.fragment = p.fragment;
 	return ret;
 };
+
+/**
+ * Scheme-specific parser for mailto URIs
+ * @param {ParsedURI} parsed
+ * @returns {ParsedURI}
+ */
 URI.schemeParsers.mailto = p=>{
 	if(p.authority) return null;
 	
@@ -316,12 +336,13 @@ URI.schemeParsers.mailto = p=>{
  * Converts an obscured host to a more readable one.
  * @private
  * @param {string} host
- * @param {boolean} useMixedNotation - Mix hexadecimal and dot-decimal notations to represent IPv4-mapped IPv6 addresses. Default is true (recommended per RFC 5952, section 5).
+ * @param {boolean} useMixedNotation - Mix hexadecimal and dot-decimal notations to represent IPv4-mapped IPv6 addresses. Default is true (recommended per RFC 5952).
  * @return {string} - The normalized host. Null if the host is invalid.
  * 
  * See: How to Obscure Any URL   http://www.pc-help.org/obscure.htm
- *      RFC 3986   https://tools.ietf.org/html/rfc3986#section-3.2.2
- *                 https://tools.ietf.org/html/rfc3986#section-2
+ *      RFC 3986   https://tools.ietf.org/html/rfc3986#section-3.2.2 - Host
+ *                 https://tools.ietf.org/html/rfc3986#section-2 - Characters
+ *      RFC 5952   https://tools.ietf.org/html/rfc5952#section-5 - Text Representation of Special Addresses
  */
 function normalizeHost(host, useMixedNotation = true){
 	
@@ -331,18 +352,21 @@ function normalizeHost(host, useMixedNotation = true){
 	
 	let ip;
 	
-	if((/^\[.*\]$/i).test(host) && (/*let*/ ip = normalizeIPv6(host.slice(1, -1), useMixedNotation)) ) return "["+ip+"]";	//it's a valid IPv6 address
+	if((/^\[[^\]]*\]$/ui).test(host) && (ip = normalizeIPv6(host.slice(1, -1), useMixedNotation)) )
+		return "["+ip+"]";	//it's a valid IPv6 address
 	
-	if(!(/^(?:[0-9a-z!$&'()*+,\-.;=_~]|%[0-9A-F]{2})*$/i).test(host)) return null;	//contains invalid characters
+	if(!(/^(?:[0-9a-z!$&'()*+,\-.;=_~]|%[0-9A-F]{2})*$/ui).test(host))
+		return null;	//contains invalid characters
 	
 	//decode percent encodings of unreserved characters: DIGIT ALPHA -._~
-	host = host.replace(/%(2[DE]|3\d|[46][1-9A-F]|[57][0-9A]|5F|7E)/ig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
+	host = host.replace(/%(2[DE]|3\d|[46][1-9A-F]|[57][0-9A]|5F|7E)/uig, function (match, p1){ return String.fromCharCode(parseInt(p1, 16)); });
 	
-	if( (/*let*/ ip = normalizeIPv4(host)) ) return ip;	//it's a valid IPv4 address
+	if( (ip = normalizeIPv4(host)) )
+		return ip;	//it's a valid IPv4 address
 	
 	//make percent encodings upper case; everything else lower case
 	host = host.toLowerCase();
-	host = host.replace(/%(..)/ig, function (match){ return match.toUpperCase(); });
+	host = host.replace(/%(..)/uig, function (match){ return match.toUpperCase(); });
 	
 	return host;
 	
@@ -352,7 +376,7 @@ function normalizeHost(host, useMixedNotation = true){
  * Converts an obscured host to a more readable one. Only DNS domains or IPs are deemed valid.
  * @private
  * @param {string} host
- * @param {boolean} useMixedNotation - Mix hexadecimal and dot-decimal notations to represent IPv4-mapped IPv6 addresses. Default is true (recommended per RFC 5952, section 5).
+ * @param {boolean} useMixedNotation - Mix hexadecimal and dot-decimal notations to represent IPv4-mapped IPv6 addresses. Default is true (recommended per RFC 5952).
  * @return {String} - Value is the host. Attributes include the host and its parts. Null if the host is invalid. Possible attributes:
  *   {string} .host - The normalized domain name or IP.
  *   {string} .ip
@@ -364,13 +388,15 @@ function normalizeHost(host, useMixedNotation = true){
  *      RFC 2181   https://tools.ietf.org/html/rfc2181#section-11
  *      RFC 1123   https://tools.ietf.org/html/rfc1123#section-2
  *      RFC 3696   https://tools.ietf.org/html/rfc3696#section-2
+ *      RFC 5952   https://tools.ietf.org/html/rfc5952#section-5 - Text Representation of Special Addresses
  */
 function normalizeDNSHost(host, useMixedNotation = true){
 	
 	host = normalizeHost(host, useMixedNotation);
 	if(!host) return null;
 	
-	if((/[^a-z0-9:\[\].-]/i).test(host)) return null;	//contains invalid characters
+	if(/[^a-z0-9:\[\].-]/ui.test(host))
+		return null;	//contains invalid characters
 	
 	if(/^\d+(\.\d+){3}$/.test(host)){	//it's an IPv4 address
 		let ret = new String(host);
