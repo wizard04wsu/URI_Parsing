@@ -20,7 +20,7 @@
 
 /** @module URI */
 
-export { URI as default, isDNSDomain, fixHyperlink };
+export { URI as default, isDNSDomain, parseMailbox, fixHyperlink };
 
 
 /**
@@ -78,7 +78,7 @@ function URI(uri){
 		
 		//do scheme-specific normalization and parsing
 		let valid = URI.schemeParsers[parsed.scheme](parsed);
-		if(!valid) throw new Error("the URI does not conform to its scheme");
+		if(!valid) throw new Error(`the URI does not conform to the ${parsed.scheme} scheme`);
 	}
 	
 	return parsed;
@@ -86,10 +86,216 @@ function URI(uri){
 }
 
 URI.parse = parseURI;
+URI.resolveRelativeURI = resolveRelativeURI;
 URI.parseHost = parseHost;
-URI.resolveRelativeReference = resolveRelativeReference;
 URI.parseQuery = parseQuery;
-URI.parseMailbox = parseMailbox;
+
+/**
+ * A customizable collection of scheme-specific parsing functions.
+ * @static
+ * @name schemeParsers
+ * @type {object}
+ */
+URI.schemeParsers = {
+	
+	/**
+	 * Scheme-specific parser for http URIs
+	 * @type {SchemeParser}
+	 */
+	http(p){
+		if(!p.authority || !p.authority.host)
+			return false;	//no host
+		
+		if(!p.authority.host.ip && !isDNSDomain(p.authority.host.name))
+			return false;	//host is neither an IP address nor a DNS domain name
+		
+		p.authority.port = p.authority.port || "80";
+		p.path = removeDotSegments(p.path) || "/";
+		p.query = parseQuery(p.query);
+		
+		defineNonEnumerableProperty(p.authority, "toString", function toString(){
+			return (this.userinfo ? this.userinfo+"@" : "") + this.host + (this.port && this.port !== "80" ? ":"+this.port : "");
+		});
+		
+		return true;
+	},
+	
+	/**
+	 * Scheme-specific parser for https URIs
+	 * @type {SchemeParser}
+	 */
+	https(p){
+		if(!p.authority || !p.authority.host)
+			return false;	//no host
+		
+		if(!p.authority.host.ip && !isDNSDomain(p.authority.host.name))
+			return false;	//host is neither an IP address nor a DNS domain name
+		
+		p.authority.port = p.authority.port || "443";
+		p.path = removeDotSegments(p.path) || "/";
+		p.query = parseQuery(p.query);
+		
+		defineNonEnumerableProperty(p.authority, "toString", function toString(){
+			return (this.userinfo ? this.userinfo+"@" : "") + this.host + (this.port && this.port !== "443" ? ":"+this.port : "");
+		});
+		
+		return true;
+	},
+	
+	/**
+	 * Scheme-specific parser for mailto URIs
+	 * @type {SchemeParser}
+	 * 
+	 *   {array} .to - For mailto URIs. Array of valid email addresses.
+	 *   {array} .cc - For mailto URIs. Array of valid email addresses.
+	 *   {array} .bcc - For mailto URIs. Array of valid email addresses.
+	 *   {string} .subject - For mailto URIs.
+	 *   {string} .body - For mailto URIs.
+	 *   {array} .headers - For mailto URIs. An array of additional email headers (each header is an object {name, value}).
+	 * 
+	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986
+	 */
+	mailto(p){
+		if(p.authority) return false;
+		
+		p.fragment = "";
+		p.query = parseQuery(p.query);
+		
+		p.to = [];
+		p.cc = [];
+		p.bcc = [];
+		p.subject = "";
+		p.body = "";
+		p.headers = [];	//other headers besides the above (each header is an object {name, value})
+		
+		//splits the string at the commas (ignoring commas within quoted strings or comments)
+		//returns an array of valid email addresses
+		function splitEmailAddresses(str){
+			
+			let parts = str.split(","),
+				commentLevel = 0,
+				inQuote = false,
+				addresses = [];
+			
+			while(parts.length){
+				
+				//decode percent-encoded characters
+				parts[0] = decodeURIComponent(parts[0]);
+				
+				//determine if inside a comment or a quoted string
+				let rxp = /(?:^|[^\\()"])(?:\\\\)*([()"])/ug,
+					c;
+				while(c = rxp.exec(parts[0])){
+					if(!inQuote){
+						if(c[1] === "(") commentLevel++;
+						else if(c[1] === ")") commentLevel--;
+						else inQuote = true;
+					}
+					else if(c[1] === "\""){
+						inQuote = false;
+					}
+				}
+				
+				if(inQuote || commentLevel > 0){	//inside a quoted string or a comment
+					if(parts[1]){	//if there is another part
+						//concatenate the first two parts and try again
+						parts[1] = parts[0] + "," + parts[1];
+						inQuote = false;
+						commentLevel = 0;
+					}
+					//else there are no more parts; still inside a comment or quoted string; invalid address
+				}
+				else{
+					let parsed = parseMailbox(parts[0]);
+					if(parsed){	//it's a valid address
+						addresses.push(parsed.displayName ? parsed.full : parsed.simple);
+					}
+					//else it's an invalid address
+				}
+				//else there is an extra closing parenthesis; invalid address
+				
+				parts.shift();
+				
+			}
+			
+			return addresses;
+			
+		}
+		
+		function encodePart(str){
+			return encodeURI(str).replace(/[\/?&=#]/g, function (match){ return "%"+match.charCodeAt(0).toString(16).toUpperCase(); });
+		}
+		
+		//split headers into arrays
+		{
+			
+			p.to = p.path ? splitEmailAddresses(p.path) : [];
+			
+			let headers = p.query.pairs || [];
+			for(let i=0; i<headers.length; i++){
+				if(headers[i].value === "") continue;
+				
+				headers[i].name = decodeURIComponent(headers[i].name);
+				if(headers[i].name === "to")
+					p.to = p.to.concat(splitEmailAddresses(headers[i].value));
+				else if(headers[i].name === "cc")
+					p.cc = p.cc.concat(splitEmailAddresses(headers[i].value));
+				else if(headers[i].name === "bcc")
+					p.bcc = p.bcc.concat(splitEmailAddresses(headers[i].value));
+				else if(headers[i].name === "subject")
+					p.subject += decodeURIComponent(headers[i].value);
+				else if(headers[i].name === "body")
+					p.body += decodeURIComponent(headers[i].value);
+				else{
+					headers[i].value = decodeURIComponent(headers[i].value);
+					p.headers.push(headers[i]);
+				}
+			}
+			
+			if(p.to.length + p.cc.length + p.bcc.length === 0)
+				return false;	//no destination
+			
+		}
+		
+		//combine headers into a query string
+		{
+			
+			p.path = encodePart(p.to.join(","));
+			
+			let query = "";
+			if(p.cc.length){
+				query += "cc=" + encodePart(p.cc.join(","));
+			}
+			if(p.bcc.length){
+				if(query) query += "&";
+				query += "bcc=" + encodePart(p.bcc.join(","));
+			}
+			if(p.subject){
+				if(query) query += "&";
+				query += "subject=" + encodePart(p.subject);
+			}
+			if(p.body){
+				if(query) query += "&";
+				query += "body=" + encodePart(p.body);
+			}
+			if(p.headers.length){
+				for(i=0; i<p.headers.length; i++){
+					if(query) query += "&";
+					query += encodePart(p.headers[i].name) + "=" + encodePart(p.headers[i].value);
+				}
+			}
+			
+			p.uri = "mailto:" + p.path + (query ? "?"+query : "");
+			
+			p.query = parseQuery(query);
+			
+		}
+		
+		return true;
+		
+	}
+	
+};
 
 
 /**
@@ -162,7 +368,7 @@ function parseURI(uri){
 		userinfo = parts.userinfo,
 		host = parts.host,
 		port = parts.port,
-		path = removeDotSegments( normalizePath(parts.path1 || parts.path2) ),
+		path = normalizePath(parts.path1 || parts.path2),
 		query = normalizeQueryOrFragment(parts.query),
 		fragment = normalizeQueryOrFragment(parts.fragment);*/
 	
@@ -250,209 +456,74 @@ function parseURI(uri){
 }
 
 /**
- * A customizable collection of scheme-specific parsing functions.
- * @static
- * @name schemeParsers
- * @type {object}
+ * Determines the target URI of a relative reference.
+ * @alias module:URI.resolveRelativeURI
+ * @param {string} relativeReference The relative reference.
+ * @param {string} baseURI - The URI that the reference is relative to.
+ * @returns {string} - The target URI.
+ * @throws {TypeError}
+ * @throws {Error} - If 'baseURI' is not a valid URI or 'relativeReference' is not acceptable.
+ * @see [RFC 3986, section 4.2](https://tools.ietf.org/html/rfc3986#section-4.2)
+ * @see [RFC 3986, section 5.2.4](https://tools.ietf.org/html/rfc3986#section-5.2.4)
  */
-defineNonEnumerableProperty(URI, "schemeParsers", {});
+function resolveRelativeURI(relativeReference, baseURI){
+	
+	if(!(typeof relativeReference === "string" || relativeReference instanceof String))
+		throw new TypeError("'relativeReference' is not a string");
+	if(!(typeof baseURI === "string" || baseURI instanceof String))
+		throw new TypeError("'baseURI' is not a string");
+	
+	relativeReference = ""+relativeReference;
+	
+	try{
+		let targetURI = parseURI(relativeReference);
+		return targetURI;	//it's already a full URI
+	}catch(e){}
+	
+	try{
+		baseURI = parseURI(baseURI);
+	}catch(e){
+		throw new Error("'baseURI' is not a valid URI");
+	}
+	
+	if(relativeReference === "") return baseURI;
+	
+	//build the target URI
+	
+	//add the base scheme
+	let targetURI = ""+baseURI.scheme+":";
+	
+	if(baseURI.authority && !/^\/\//u.test(relativeReference)){
+		//add the base authority
+		targetURI += "//"+baseURI.authority;
+	}
+	
+	if(relativeReference[0] !== "/"){
+		if(relativeReference[0] === "#"){
+			//add the base path
+			targetURI += baseURI.path;
+			//add the base query
+			targetURI += "?"+baseURI.query;
+		}
+		else if(relativeReference[0] === "?"){
+			//add the base path
+			targetURI += baseURI.path;
+		}
+		else if(/^([a-z\d+.-]*):/u.test(relativeReference)){
+			throw new Error("the first path segment of 'relativeReference' contains a colon; consider preceding it with './'");
+		}
+		else{
+			//add the base path, up to the last "/"
+			targetURI += baseURI.path.match(/^(?:[^\/]*\/)*/u)[0];
+		}
+	}
+	
+	targetURI += relativeReference;
+	
+	return parseURI(targetURI).toString();
+	
+}
 
-/**
- * Scheme-specific parser for http URIs
- * @type {SchemeParser}
- */
-URI.schemeParsers.http = p=>{
-	if(!p.authority || !p.authority.host)
-		return false;	//no host
-	
-	if(!p.authority.host.ip && !isDNSDomain(p.authority.host.name))
-		return false;	//host is neither an IP address nor a DNS domain name
-	
-	p.authority.port = p.authority.port || "80";
-	p.path = removeDotSegments(p.path) || "/";
-	p.query = parseQuery(p.query);
-	
-	defineNonEnumerableProperty(p.authority, "toString", function toString(){
-		return (this.userinfo ? this.userinfo+"@" : "") + this.host + (this.port && this.port !== "80" ? ":"+this.port : "");
-	});
-	
-	return true;
-};
-
-/**
- * Scheme-specific parser for https URIs
- * @type {SchemeParser}
- */
-URI.schemeParsers.https = p=>{
-	if(!p.authority || !p.authority.host)
-		return false;	//no host
-	
-	if(!p.authority.host.ip && !isDNSDomain(p.authority.host.name))
-		return false;	//host is neither an IP address nor a DNS domain name
-	
-	p.authority.port = p.authority.port || "443";
-	p.path = removeDotSegments(p.path) || "/";
-	p.query = parseQuery(p.query);
-	
-	defineNonEnumerableProperty(p.authority, "toString", function toString(){
-		return (this.userinfo ? this.userinfo+"@" : "") + this.host + (this.port && this.port !== "443" ? ":"+this.port : "");
-	});
-	
-	return true;
-};
-
-/**
- * Scheme-specific parser for mailto URIs
- * @type {SchemeParser}
- * 
- *   {array} .to - For mailto URIs. Array of valid email addresses.
- *   {array} .cc - For mailto URIs. Array of valid email addresses.
- *   {array} .bcc - For mailto URIs. Array of valid email addresses.
- *   {string} .subject - For mailto URIs.
- *   {string} .body - For mailto URIs.
- *   {array} .headers - For mailto URIs. An array of additional email headers (each header is an object {name, value}).
- * 
- * See: RFC 3986   https://tools.ietf.org/html/rfc3986
- */
-URI.schemeParsers.mailto = p=>{
-	if(p.authority) return false;
-	
-	p.fragment = "";
-	p.query = parseQuery(p.query);
-	
-	p.to = [];
-	p.cc = [];
-	p.bcc = [];
-	p.subject = "";
-	p.body = "";
-	p.headers = [];	//other headers besides the above (each header is an object {name, value})
-	
-	//splits the string at the commas (ignoring commas within quoted strings or comments)
-	//returns an array of valid email addresses
-	function splitEmailAddresses(str){
-		
-		let parts = str.split(","),
-			commentLevel = 0,
-			inQuote = false,
-			addresses = [];
-		
-		while(parts.length){
-			
-			//decode percent-encoded characters
-			parts[0] = decodeURIComponent(parts[0]);
-			
-			//determine if inside a comment or a quoted string
-			let rxp = /(?:^|[^\\()"])(?:\\\\)*([()"])/ug,
-				c;
-			while(c = rxp.exec(parts[0])){
-				if(!inQuote){
-					if(c[1] === "(") commentLevel++;
-					else if(c[1] === ")") commentLevel--;
-					else inQuote = true;
-				}
-				else if(c[1] === "\""){
-					inQuote = false;
-				}
-			}
-			
-			if(inQuote || commentLevel > 0){	//inside a quoted string or a comment
-				if(parts[1]){	//if there is another part
-					//concatenate the first two parts and try again
-					parts[1] = parts[0] + "," + parts[1];
-					inQuote = false;
-					commentLevel = 0;
-				}
-				//else there are no more parts; still inside a comment or quoted string; invalid address
-			}
-			else{
-				let parsed = parseMailbox(parts[0]);
-				if(parsed){	//it's a valid address
-					addresses.push(parsed.displayName ? parsed.full : parsed.simple);
-				}
-				//else it's an invalid address
-			}
-			//else there is an extra closing parenthesis; invalid address
-			
-			parts.shift();
-			
-		}
-		
-		return addresses;
-		
-	}
-	
-	function encodePart(str){
-		return encodeURI(str).replace(/[\/?&=#]/g, function (match){ return "%"+match.charCodeAt(0).toString(16).toUpperCase(); });
-	}
-	
-	//split headers into arrays
-	{
-		
-		p.to = p.path ? splitEmailAddresses(p.path) : [];
-		
-		let headers = p.query.pairs || [];
-		for(let i=0; i<headers.length; i++){
-			if(headers[i].value === "") continue;
-			
-			headers[i].name = decodeURIComponent(headers[i].name);
-			if(headers[i].name === "to")
-				p.to = p.to.concat(splitEmailAddresses(headers[i].value));
-			else if(headers[i].name === "cc")
-				p.cc = p.cc.concat(splitEmailAddresses(headers[i].value));
-			else if(headers[i].name === "bcc")
-				p.bcc = p.bcc.concat(splitEmailAddresses(headers[i].value));
-			else if(headers[i].name === "subject")
-				p.subject += decodeURIComponent(headers[i].value);
-			else if(headers[i].name === "body")
-				p.body += decodeURIComponent(headers[i].value);
-			else{
-				headers[i].value = decodeURIComponent(headers[i].value);
-				p.headers.push(headers[i]);
-			}
-		}
-		
-		if(p.to.length + p.cc.length + p.bcc.length === 0)
-			return false;	//no destination
-		
-	}
-	
-	//combine headers into a query string
-	{
-		
-		p.path = encodePart(p.to.join(","));
-		
-		let query = "";
-		if(p.cc.length){
-			query += "cc=" + encodePart(p.cc.join(","));
-		}
-		if(p.bcc.length){
-			if(query) query += "&";
-			query += "bcc=" + encodePart(p.bcc.join(","));
-		}
-		if(p.subject){
-			if(query) query += "&";
-			query += "subject=" + encodePart(p.subject);
-		}
-		if(p.body){
-			if(query) query += "&";
-			query += "body=" + encodePart(p.body);
-		}
-		if(p.headers.length){
-			for(i=0; i<p.headers.length; i++){
-				if(query) query += "&";
-				query += encodePart(p.headers[i].name) + "=" + encodePart(p.headers[i].value);
-			}
-		}
-		
-		p.uri = "mailto:" + p.path + (query ? "?"+query : "");
-		
-		p.query = parseQuery(query);
-		
-	}
-	
-	return true;
-	
-};
 
 /**
  * Converts an obscured host to a more readable one, along with related representations.
@@ -546,24 +617,6 @@ function parseHost(host){
 	
 	return parsed;
 	
-}
-
-/**
- * Checks if a registered name conforms to the DNS specification.
- * @private
- * @param {string} regName - A registered name.
- * @return {boolean}
- * @see [RFC 3696, section 2](https://datatracker.ietf.org/doc/html/rfc3696#section-2) - Restrictions on domain (DNS) names
- */
-function isDNSDomain(regName){
-	return (
-		//not longer that 255 characters
-		regName.length <= 255
-		//valid labels between 1 and 63 characters
-		&& /^(?=([a-z\d](?:[a-z\d-]{0,61}[a-z\d])?))\1(?:\.(?=([a-z\d](?:[a-z\d-]{0,61}[a-z\d])?))\2)*\.?$/ui.test(regName)
-		//TLD is not all-numeric
-		&& !(/(^|\.)\d+\.?$/u).test(regName)
-	);
 }
 
 /**
@@ -806,6 +859,7 @@ function normalizeIPv6(ip, useMixedNotation = true){
 	
 }
 
+
 /**
  * Converts an obscured path to a more readable one.
  * @private
@@ -881,71 +935,6 @@ function removeDotSegments(path){
 	
 }
 
-/**
- * Determines the target URI of a relative reference.
- * @alias module:URI.resolveRelativeReference
- * @param {string} relativeReference The relative reference.
- * @param {string} baseURI - The URI that the reference is relative to.
- * @returns {ParsedURI|null} - Object containing the target URI and its parts. The members vary depending on the scheme.
- * @throws {TypeError}
- * @throws {Error} - If 'baseURI' is not a valid URI.
- */
-function resolveRelativeReference(relativeReference, baseURI){
-	
-	if(!(typeof relativeReference === "string" || relativeReference instanceof String))
-		throw new TypeError("'relativeReference' is not a string");
-	if(!(typeof baseURI === "string" || baseURI instanceof String))
-		throw new TypeError("'baseURI' is not a string");
-	
-	relativeReference = ""+relativeReference;
-	
-	let targetURI = parseURI(relativeReference);
-	if(targetURI) return targetURI;	//it's already a URI
-	
-	try{
-		baseURI = parseURI(baseURI);
-	}catch(e){
-		throw new Error("'baseURI' is not a valid URI");
-	}
-	
-	//build the target URI
-	
-	//add the base scheme
-	targetURI = baseURI.scheme+":";
-	
-	if(!/^\/\//u.test(relativeReference)){
-		//relativeReference doesn't include an authority
-		
-		//add the base authority if there is one
-		if(baseURI.authority)
-			targetURI += "//"+baseURI.authority;
-		
-		if(/^$|^[?#]/u.test(relativeReference)){
-			//relativeReference doesn't include a path
-			
-			//add the base path
-			targetURI += baseURI.path;
-			
-			if(relativeReference[0] !== "?"){
-				//relativeReference doesn't include a query
-				
-				//add the base query
-				targetURI += "?"+baseURI.query;
-			}
-		}
-		else if(relativeReference[0] !== "/"){
-			//relativeReference begins with a relative path
-			
-			//add the base path, up to the last "/" (or nothing if there is no "/")
-			targetURI += baseURI.path.match(/^(?:[^\/]*\/)*/u)[0];
-		}
-	}
-	
-	targetURI += relativeReference;
-	
-	return parseURI(targetURI);
-	
-}
 
 /**
  * Converts an obscured query string or fragment to a more readable one.
@@ -1024,6 +1013,46 @@ function parseQuery(query, pairSeparator = "&", keyValueSeparator = "="){
 	});
 	
 	return ret;
+	
+}
+
+
+
+
+
+
+/**
+ * Checks if a registered name conforms to the DNS specification.
+ * @private
+ * @param {string} regName - A registered name.
+ * @return {boolean}
+ * @see [RFC 3696, section 2](https://datatracker.ietf.org/doc/html/rfc3696#section-2) - Restrictions on domain (DNS) names
+ */
+function isDNSDomain(regName){
+	return (
+		//not longer that 255 characters
+		regName.length <= 255
+		//valid labels between 1 and 63 characters
+		&& /^(?=([a-z\d](?:[a-z\d-]{0,61}[a-z\d])?))\1(?:\.(?=([a-z\d](?:[a-z\d-]{0,61}[a-z\d])?))\2)*\.?$/ui.test(regName)
+		//TLD is not all-numeric
+		&& !(/(^|\.)\d+\.?$/u).test(regName)
+	);
+}
+
+/**
+ * Converts an obscured host to a more readable one. Only DNS domains or IPs are deemed valid.
+ * @private
+ * @param {string} host
+ * @returns {ParsedURI_host|null} - Value is the host. Attributes include the host and its parts. Null if the host is invalid.
+ */
+function parseDNSHost(host){
+	
+	try{
+		host = parseHost(host);
+		if(host.ip || isDNSDomain(host.name)) return host;
+	}catch(e){
+		return null;
+	}
 	
 }
 
@@ -1232,16 +1261,38 @@ function parseMailbox(mailbox){
 				if(tokens[0].value === "<"){
 					//tempTokens is the display name
 					
-					parts.displayName = "";
+					let name = "", wsp = "";
 					while(tempTokens.length){
-						if(tempTokens[0].type === "quoted-string"){
-							//remove redundant pairs from the quoted string
-							tempTokens[0].value = tempTokens[0].value.replace(rxp_redundantPairs, "$1");
-						}
-						parts.displayName += tempTokens[0].value;
+						let type = tempTokens[0].type,
+							val = tempTokens[0].value;
 						tempTokens.shift();
+						
+						if(type === "wsp"){
+							if(!name) continue;
+							wsp += val;
+						}
+						else{
+							name += wsp;
+							wsp = "";
+							
+							if(type === "quoted-string"){
+								//remove the quotes
+								val = val.slice(1, -1);
+							}
+							
+							name += val;
+						}
 					}
-					parts.displayName = parts.displayName.replace(/^[\t ]+|[\t ]+$/g, "");	//trim whitespace
+					//unescape characters
+					name = name.replace(/\\(.)/g, "$1");
+					//escape backslashes and double quotes
+					name = name.replace(/([\\"])/g, "\\$1");
+					if(!(new RegExp(`^${rxp_atext}*$`)).test(name)){
+						//the name includes characters other than atext; add outer quotes
+						name = `"${name}"`;
+					}
+					
+					parts.displayName = name;
 					
 					angleBrackets = true;
 					tokens.shift();
@@ -1553,25 +1604,6 @@ function fixHyperlink(href){
 
 
 
-
-/**
- * Converts an obscured host to a more readable one. Only DNS domains or IPs are deemed valid.
- * @private
- * @param {string} host
- * @returns {ParsedURI_host|null} - Value is the host. Attributes include the host and its parts. Null if the host is invalid.
- */
-function parseDNSHost(host){
-	
-	try{
-		host = parseHost(host);
-		if(!(host.ip || host.name)) return null;
-		if(host.toString().length > 255) return null;
-		return host;
-	}catch(e){
-		return null;
-	}
-	
-}
 
 
 

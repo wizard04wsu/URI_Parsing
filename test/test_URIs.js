@@ -55,9 +55,11 @@ const test = [
 		["mailto:foo@bar", "mailto:foo@bar"],
 		["mailto:%22foo%22@bar", "mailto:foo@bar"],
 		["mailto:%3C%20%22foo%22@bar%20%3E", "mailto:foo@bar"],
-		["mailto:John%20%22The%20Dude%22%20Doe%3Cjd@example.com%3E", "mailto:John%20%22The%20Dude%22%20Doe%20%3Cjd@example.com%3E"],
+		//mailto:"John \"The Dude\" Doe"<jd@example.com>
+		["mailto:%20%22John%20%5C%22The%20Dude%5C%22%20Doe%22%3Cjd@example.com%3E%20", "mailto:%22John%20%5C%22The%20Dude%5C%22%20Doe%22%20%3Cjd@example.com%3E"],
 		["mailto:foo%20@bar", null],
-		["mailto:foo@%20bar", null]
+		["mailto:foo@%20bar", null],
+		["mailto:a%22%5Cb%22c%3Cfoo@bar%3E", "mailto:abc%20%3Cfoo@bar%3E"]
 	];
 
 console.group("URI parsing");
