@@ -1,10 +1,11 @@
+import URI, {isDNSDomain, fixHyperlink} from "../src/uri_parsing.mjs";
 
 function fixTest(ifHttp, ifNotHttp){
+	const loc = window.location;
 	return /^https?:$/.test(loc.protocol)?loc.protocol+"//"+(loc.username?loc.username:"")+(loc.password?":"+loc.password:"")+(loc.username|loc.password?"@":"")+loc.host+ifHttp:loc.protocol+ifNotHttp;
 }
 
-let loc = window.location,
-	test = [
+const test = [
 		["", null],
 		["a", null, fixTest("/a","a")],
 		["a:", "a:"],
@@ -48,35 +49,41 @@ let loc = window.location,
 		["http:/../b/c", null],
 		["http://b/../../././.././../c/./d/../e", "http://b/c/e"],
 		
-		["http://foo.bar/baz/bop.htm?a=1&b=&c&=d&=&&#lorem", "http://foo.bar/baz/bop.htm?a=1&b=&c#lorem"],
+		["http://foo.bar/baz/bop.htm?a=1&b=&c&=d&=&&#lorem", "http://foo.bar/baz/bop.htm?a=1&b=&c=#lorem"],
 		
 		
-		["mailto:a@b", "mailto:a@b"],
-		["mailto:%22foo%22@bar", "mailto:foo@bar"]
+		["mailto:foo@bar", "mailto:foo@bar"],
+		["mailto:%22foo%22@bar", "mailto:foo@bar"],
+		["mailto:%3C%20%22foo%22@bar%20%3E", "mailto:foo@bar"],
+		["mailto:John%20%22The%20Dude%22%20Doe%3Cjd@example.com%3E", "mailto:John%20%22The%20Dude%22%20Doe%20%3Cjd@example.com%3E"],
+		["mailto:foo%20@bar", null],
+		["mailto:foo@%20bar", null]
 	];
 
-console.group("URI parse assertions");
-	for(let i=0, result; i<test.length; i++){
-		result = ParseURI(test[i][0]);
-		if(test[i][1] === null){
-			console.assert(result === null, "Parse "+(i+1)+". "+test[i][0]+" --> "+(result && result.uri));
-			if(result !== null) console.log(result);
-		}
-		else{
-			console.assert(result && result.uri === test[i][1], "Parse "+(i+1)+":  "+test[i][0]+" --> "+(result ? result.uri : "null"));
-			if(result && result.uri !== test[i][1]) console.log(result);
+console.group("URI parsing");
+	for(let i=0; i<test.length; i++){
+		const testSubject = (i+1)+". "+test[i][0]+"\n   ";
+		try{
+			const result = URI(test[i][0]);
+			if(result.toString() === test[i][1]){
+				console.log(testSubject, result);
+			}
+			else{
+				console.assert(false, testSubject, result);
+			}
+		}catch(e){
+			if(test[i][1] === null){
+				console.log(testSubject, "(invalid)");
+			}
+			else{
+				console.assert(false, testSubject, "Error: "+e.message);
+				throw e;
+			}
 		}
 	}
 console.groupEnd();
 
-console.groupCollapsed("URI parse objects");
-	for(let i=0, result; i<test.length; i++){
-		result = ParseURI(test[i][0]);
-		console.log(test[i][0], result);
-	}
-console.groupEnd();
-
-console.group("URI fix assertions");
+/*console.group("URI fix assertions");
 	for(let i=0, result; i<test.length; i++){
 		result = ParseURI.fixHyperlink(test[i][0]);
 		if(test[i][2] === void 0) test[i][2] = test[i][1];
@@ -103,4 +110,4 @@ console.groupCollapsed("Email addresses");
 	console.log(ParseURI.emailAddress("\"f.oo\"@bar.baz"));
 	console.log(ParseURI.emailAddress("\"f oo\"@bar.baz"));
 	console.log(ParseURI.fixHyperlink("http://foo"));
-console.groupEnd();
+console.groupEnd();*/

@@ -81,8 +81,6 @@ function URI(uri){
 		if(!valid) throw new Error("the URI does not conform to its scheme");
 	}
 	
-	defineNonEnumerableProperty(parsed, "toString", function toString(){ return this.uri; });
-	
 	return parsed;
 	
 }
@@ -170,7 +168,7 @@ function parseURI(uri){
 	
 	//*** so we'll use numbered capture instead ***
 	
-	let rxp = /^(?=([a-z][a-z\d+.-]*))\1:(?:\/\/((?:(?=((?:[\w-.~!$&'()*+,;=:]|%[\dA-F]{2})*))\3@)?(?=(\[[\dA-F:.]{2,}\]|(?:[\w-.~!$&'()*+,;=]|%[\dA-F]{2})*))\4(?::(?=(\d*))\5)?)(\/(?=((?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\7)?|(\/?(?!\/)(?=((?:[\w-.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\9)?)(?:\?(?=((?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\10)?(?:#(?=((?:[\w-.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\11)?$/ui;
+	let rxp = /^(?=([a-z][a-z\d+.-]*))\1:(?:\/\/((?:(?=((?:[-\w.~!$&'()*+,;=:]|%[\dA-F]{2})*))\3@)?(?=(\[[\dA-F:.]{2,}\]|(?:[-\w.~!$&'()*+,;=]|%[\dA-F]{2})*))\4(?::(?=(\d*))\5)?)(\/(?=((?:[-\w.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\7)?|(\/?(?!\/)(?=((?:[-\w.~!$&'()*+,;=:@/]|%[\dA-F]{2})*))\9)?)(?:\?(?=((?:[-\w.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\10)?(?:#(?=((?:[-\w.~!$&'()*+,;=:@/?]|%[\dA-F]{2})*))\11)?$/ui;
 	
 	/*Composed as follows:
 		^
@@ -213,7 +211,7 @@ function parseURI(uri){
 		userinfo = parts[3],
 		host = parts[4],
 		port = parts[5],
-		path = removeDotSegments( normalizePath(parts[6] || parts[8]) ),
+		path = normalizePath(parts[6] || parts[8]),
 		query = normalizeQueryOrFragment(parts[10]),
 		fragment = normalizeQueryOrFragment(parts[11]);
 	
@@ -229,25 +227,23 @@ function parseURI(uri){
 		parsed.authority = {
 			userinfo: userinfo,
 			host: parseHost(host),
-			port: port
+			port: port,
+			[Symbol.toPrimitive](hint){ return (hint === "number") ? NaN : this.toString(); }
 		};
 		
-		parsed.authority[Symbol.toPrimitive] = function (hint){
-			if(hint === "number") return NaN;
-			
+		defineNonEnumerableProperty(parsed.authority, "toString", function toString(){
 			return (this.userinfo ? this.userinfo+"@" : "") + this.host + (this.port ? ":"+this.port : "");
-		};
+		});
 	}
 	
-	parsed[Symbol.toPrimitive] = function (hint){
-		if(hint === "number") return NaN;
-		
-		let uri = this.scheme+":";
-		if(this.authority !== void 0) uri += "//"+authority;
-		uri += this.path + (this.query ? "?"+this.query : "") + (this.fragment ? "#"+this.fragment : "");
-		
+	parsed[Symbol.toPrimitive] = function (hint){ return (hint === "number") ? NaN : this.toString(); };
+	
+	defineNonEnumerableProperty(parsed, "toString", function toString(){
+		let uri = ""+this.scheme+":";
+		if(this.authority) uri += "//"+this.authority;
+		uri += this.path + (this.query.toString() ? "?"+this.query : "") + (this.fragment.toString() ? "#"+this.fragment : "");
 		return uri;
-	};
+	});
 	
 	return parsed;
 	
@@ -269,12 +265,16 @@ URI.schemeParsers.http = p=>{
 	if(!p.authority || !p.authority.host)
 		return false;	//no host
 	
-	if(!p.authority.host.ip && !isDNSDomain(p.authority.host))
+	if(!p.authority.host.ip && !isDNSDomain(p.authority.host.name))
 		return false;	//host is neither an IP address nor a DNS domain name
 	
 	p.authority.port = p.authority.port || "80";
-	p.path = p.path || "/";
+	p.path = removeDotSegments(p.path) || "/";
 	p.query = parseQuery(p.query);
+	
+	defineNonEnumerableProperty(p.authority, "toString", function toString(){
+		return (this.userinfo ? this.userinfo+"@" : "") + this.host + (this.port && this.port !== "80" ? ":"+this.port : "");
+	});
 	
 	return true;
 };
@@ -284,14 +284,21 @@ URI.schemeParsers.http = p=>{
  * @type {SchemeParser}
  */
 URI.schemeParsers.https = p=>{
-	if(!p.authority) return false;	//no authority
+	if(!p.authority || !p.authority.host)
+		return false;	//no host
 	
-	const port = p.authority.port;
-	if(URI.schemeParsers.http(p)){
-		p.authority.port = port || "443";
-		
-		return true;
-	}
+	if(!p.authority.host.ip && !isDNSDomain(p.authority.host.name))
+		return false;	//host is neither an IP address nor a DNS domain name
+	
+	p.authority.port = p.authority.port || "443";
+	p.path = removeDotSegments(p.path) || "/";
+	p.query = parseQuery(p.query);
+	
+	defineNonEnumerableProperty(p.authority, "toString", function toString(){
+		return (this.userinfo ? this.userinfo+"@" : "") + this.host + (this.port && this.port !== "443" ? ":"+this.port : "");
+	});
+	
+	return true;
 };
 
 /**
@@ -359,8 +366,8 @@ URI.schemeParsers.mailto = p=>{
 			}
 			else{
 				let parsed = parseMailbox(parts[0]);
-				if(parsed && !parsed.unrecognizedDomain){	//it's a valid address
-					addresses.push(parsed.display ? parsed.full : parsed.simple);
+				if(parsed){	//it's a valid address
+					addresses.push(parsed.displayName ? parsed.full : parsed.simple);
 				}
 				//else it's an invalid address
 			}
@@ -378,6 +385,7 @@ URI.schemeParsers.mailto = p=>{
 		return encodeURI(str).replace(/[\/?&=#]/g, function (match){ return "%"+match.charCodeAt(0).toString(16).toUpperCase(); });
 	}
 	
+	//split headers into arrays
 	{
 		
 		p.to = p.path ? splitEmailAddresses(p.path) : [];
@@ -408,6 +416,7 @@ URI.schemeParsers.mailto = p=>{
 		
 	}
 	
+	//combine headers into a query string
 	{
 		
 		p.path = encodePart(p.to.join(","));
@@ -505,31 +514,31 @@ function parseHost(host){
 			//it's a valid reserved name
 			
 			//make percent encodings upper case; everything else lower case
-			host = host.toLowerCase().replace(/%(..)/uig, function (match){
+			host = host.toLowerCase().replace(/%../uig, function (match){
 				return match.toUpperCase();
 			});
 		}
 	}
 	
 	const parsed = {
-		[Symbol.toPrimitive](hint){
-			if(hint === "number") return NaN;
-			
-			return this.ip || this.name;
-		}
+		[Symbol.toPrimitive](hint){ return (hint === "number") ? NaN : this.toString(); }
 	};
+	
+	defineNonEnumerableProperty(parsed, "toString", function toString(){
+		return this.ip ? this.ip.toString() : this.name;
+	});
 	
 	if(ipv6){
 		parsed.ip = {
-			[Symbol.toPrimitive](hint){
-				if(hint === "number") return NaN;
-				
-				return this.v4 || this.v6mixed || this.v6;
-			},
 			v4: ipv4,
 			v6mixed: ipv6mixed,
-			v6: ipv6
+			v6: ipv6,
+			[Symbol.toPrimitive](hint){ return (hint === "number") ? NaN : this.toString(); }
 		};
+		
+		defineNonEnumerableProperty(parsed.ip, "toString", function toString(){
+			return this.v4 || this.v6mixed || this.v6;
+		});
 	}
 	else{
 		parsed.name = host;
@@ -996,19 +1005,25 @@ function parseQuery(query, pairSeparator = "&", keyValueSeparator = "="){
 		results.push( { key: decodeURIComponent(pair[0]), value: decodeURIComponent(pair[1]||"") } );
 	}
 	
-	return {
+	const ret = {
+		pairs: results,
 		[Symbol.toPrimitive](hint){
 			if(hint === "number") return NaN;
 			
-			let qs = ""
-			for(const pair of results){
-				if(qs) qs += pairSeparator;
-				qs += encodeURIComponent(pair.key) + keyValueSeparator + encodeURIComponent(pair.value);
-			}
-			return qs;
-		},
-		pairs: results
+			return this.toString();
+		}
 	};
+	
+	defineNonEnumerableProperty(ret, "toString", function toString(){
+		let qs = ""
+		for(const pair of results){
+			if(qs) qs += pairSeparator;
+			qs += encodeURIComponent(pair.key) + keyValueSeparator + encodeURIComponent(pair.value);
+		}
+		return qs;
+	});
+	
+	return ret;
 	
 }
 
@@ -1023,15 +1038,12 @@ function parseQuery(query, pairSeparator = "&", keyValueSeparator = "="){
  *   {string} .displayName - Display name.
  *   {string} .localPart - Local part of the address.
  *   {string} .domain - Domain part of the address. Only DNS domains or IPs are deemed valid.
- *   {string} .unescapedFull - `.full` with any quoted strings unescaped.
- *   {string} .unescapedSimple - `.simple` with the local part unescaped (if it's a quoted string).
- *   {string} .unescapedDisplayName - `.displayName` with any quoted strings unescaped.
- *   {string} .unescapedLocalPart - `.localPart` unescaped (if it's a quoted string).
  * 
  * Does not parse groups (e.g., a distribution list).
  * Unfolds whitespace and removes comments.
  * Does not consider the 998 character limit per line.
  * See: RFC 5322   https://tools.ietf.org/html/rfc5322
+ *      RFC 5322 Errata   https://www.rfc-editor.org/errata/eid3135
  *      RFC 5321   https://tools.ietf.org/html/rfc5321#section-4.1.2
  *                 https://tools.ietf.org/html/rfc5321#section-2.3.4
  *                 https://tools.ietf.org/html/rfc5321#section-4.5.3.1
@@ -1098,7 +1110,7 @@ function parseMailbox(mailbox){
 	//returns a string with the remaining whitespace and text
 	function stripFWS(str){ return str.replace(/\r?\n([\t ]+)/g, "$1"); }
 	
-	let rxp_wsp = "[\\t ]",
+	const rxp_wsp = "[\\t ]",
 		rxp_fws = "(?:(?:"+rxp_wsp+"*\\r?\\n)?"+rxp_wsp+"+)",
 		rxp_atext = "[!#$%&'*+\\-/0-9=?A-Z^_`a-z{|}~]",
 		rxp_qtext = "[!#$%&'()*+,\\-./0-9:;<=>?@A-Z[\\]^_`a-z{|}~]",
@@ -1109,7 +1121,7 @@ function parseMailbox(mailbox){
 		//these may be surrounded by CFWS
 		rxpAtom = "(?:"+rxp_atext+"+)",
 		rxpDotAtom = "(?:"+rxp_atext+"+(?:\\."+rxp_atext+"+)*)",
-		rxpQuotedString = "(?:\"(?:(?:"+rxp_fws+"?"+rxp_qcontent+"+)+"+rxp_fws+"?|"+rxp_fws+")\")";	//see https://www.rfc-editor.org/errata/eid3135
+		rxpQuotedString = "(?:\"(?:(?:"+rxp_fws+"?"+rxp_qcontent+"+)+"+rxp_fws+"?|"+rxp_fws+")\")";
 		
 		/* local-part = dot-atom / quoted-string
 		   domain = dot-atom / domain-literal
@@ -1121,8 +1133,11 @@ function parseMailbox(mailbox){
 	
 	function newRxp(rxp){ return new RegExp("^"+rxp, "i"); }
 	
+	const rxp_redundantPairs = new RegExp("\\\\("+rxp_qtext+")", "ig");
+	
 	let tokens = [];
 	
+	//parse tokens
 	{
 		
 		let token,
@@ -1178,183 +1193,131 @@ function parseMailbox(mailbox){
 	
 	let parts = {};
 	
+	//get the parts
 	{
 		
-		let foundDisplayName = false,
-			foundNoDisplayName = false,
-			QSACount = 0,
-			foundAngleBracket = false,
-			foundNoAngleBracket = false,
-			foundLocalPart = false,
-			foundAtSign = false,
-			foundDomain = false,
-			foundClosingAngleBracket = false,
-			i = 0;
+		const tempTokens = [];
+		let angleBrackets;
 		
+		function minimizeLocalPart(localPart){
+			if(localPart.type === "quoted-string"){
+				//remove redundant pairs from the quoted string
+				const quoteContent = localPart.value.slice(1,-1).replace(rxp_redundantPairs, "$1");
+				
+				if(newRxp(rxpDotAtom).test(quoteContent)){
+					//quotes are unnecessary since their content is a dot-atom
+					return quoteContent;
+				}
+				return `"${quoteContent}"`;
+			}
+			return localPart.value;
+		}
+		
+		if(!tokens.length) return null;
+		
+		//get the display name (optional) and local part
 		while(true){
 			
-			if(i === tokens.length){
-				if(foundDomain && (foundNoAngleBracket || foundClosingAngleBracket)){
-					break;
-				}
-				else{
-					return null;
-				}
+			if(tokens[0].type === "dot-atom"){
+				parts.localPart = tokens[0].value;
+				tokens.shift();
 			}
-			else if(!foundDisplayName && !foundNoDisplayName){
-				if(tokens[i].type === "dot-atom"){
-					if(QSACount > 0) return null;
-					foundNoDisplayName = true;
-					foundNoAngleBracket = true;
-					foundLocalPart = true;
-					i++;
+			else if(parts.displayName === void 0){
+				while(tokens.length && (tokens[0].type === "quoted-string" || tokens[0].type === "atom" || tokens[0].type === "wsp")){
+					tempTokens.push(tokens[0]);
+					tokens.shift();
 				}
-				else if(tokens[i].type === "quoted-string" || tokens[i].type === "atom"){
-					QSACount++;
-					i++;
-				}
-				else if(tokens[i].value === "@"){
-					if(QSACount > 1) return null;
-					foundNoDisplayName = true;
-					foundNoAngleBracket = true;
-					foundLocalPart = true;
-					foundAtSign = true;
-					i++;
-				}
-				else if(tokens[i].type === "wsp"){
-					if(tokens[i+1] && tokens[i+1].value === "@") return null;	//WSP before "@"
-					i++;
-				}
-				else if(QSACount > 0){
-					foundDisplayName = true;
-				}
-				else{
-					foundNoDisplayName = true;
-				}
-			}
-			else if(tokens[i].type === "wsp"){
-				if((foundLocalPart && !foundAtSign) || (foundAtSign && !foundDomain)){
-					return null;	//WSP around "@"
-				}
-				i++;
-			}
-			else if(!foundAngleBracket && !foundNoAngleBracket){
-				if(tokens[i].value === "<"){
-					foundAngleBracket = true;
-					i++;
-				}
-				else if(foundDisplayName){
-					return null;
-				}
-				else{
-					foundNoAngleBracket = true;
-				}
-			}
-			else if(!foundLocalPart){
-				if(tokens[i].type === "atom" || tokens[i].type === "dot-atom" || tokens[i].type === "quoted-string"){
-					if(tokens[i].value.length > 64) return null;	//too long
-					foundLocalPart = true;
-					i++;
-				}
-				else{
-					return null;
-				}
-			}
-			else if(!foundAtSign){
-				if(tokens[i].value === "@"){
-					foundAtSign = true;
-					i++;
-				}
-				else{
-					return null;
-				}
-			}
-			else if(!foundDomain){
-				if(tokens[i].type === "domain-literal"){
-					if(tokens[i].value.length > 255) return null;	//too long
-					foundDomain = true;
-					i++;
-				}
-				else if( (tokens[i].type === "atom" || tokens[i].type === "dot-atom") && (tokens[i].value = parseDNSHost(tokens[i].value)) ){
-					if(tokens[i].value.ipv4){
-						tokens[i].value = "[" + tokens[i].value.ipv4 + "]";	//IPv4 domain-literal
+				if(!tokens.length) return null;
+				
+				if(tokens[0].value === "<"){
+					//tempTokens is the display name
+					
+					parts.displayName = "";
+					while(tempTokens.length){
+						if(tempTokens[0].type === "quoted-string"){
+							//remove redundant pairs from the quoted string
+							tempTokens[0].value = tempTokens[0].value.replace(rxp_redundantPairs, "$1");
+						}
+						parts.displayName += tempTokens[0].value;
+						tempTokens.shift();
 					}
-					else{
-						tokens[i].value = tokens[i].value.host;
+					parts.displayName = parts.displayName.replace(/^[\t ]+|[\t ]+$/g, "");	//trim whitespace
+					
+					angleBrackets = true;
+					tokens.shift();
+					while(tokens.length && tokens[0].type === "wsp"){
+						tokens.shift();
 					}
-					if(tokens[i].value.length > 255) return null;	//too long
-					foundDomain = true;
-					i++;
+					
+					continue;
+				}
+				else if(tokens[0].value === "@"){
+					//tempTokens is the local part
+					
+					if(tempTokens.length !== 1) return null;
+					
+					parts.localPart = minimizeLocalPart(tempTokens[0]);
 				}
 				else{
 					return null;
 				}
 			}
-			else if(foundAngleBracket && !foundClosingAngleBracket){
-				if(tokens[i].value === ">"){
-					foundClosingAngleBracket = true;
-					i++
-				}
-				else{
-					return null;
-				}
+			else if(tokens[0].type === "atom" || tokens[0].type === "dot-atom" || tokens[0].type === "quoted-string"){
+				parts.localPart = minimizeLocalPart(tokens[0]);
+				
+				tokens.shift();
 			}
 			else{
-			//there are characters remaining after the mailbox
 				return null;
 			}
 			
+			break;
 		}
+		parts.displayName = parts.displayName || "";
 		
-		let rxp_redundantPairs = new RegExp("\\\\("+rxp_qtext+")", "ig");
+		if(tokens[0].value !== "@") return null;
+		tokens.shift();
+		if(!tokens.length) return null;
 		
-		parts.displayName = "";
-		parts.unescapedDisplayName = "";
-		if(foundDisplayName){
-			let rxp_atomSequence = newRxp(rxpAtom+"(?: "+rxpAtom+")*$");
-			while(tokens[0].value !== "<"){
-				
-				if(tokens[0].type === "quoted-string"){
-					let str = tokens[0].value.replace(rxp_redundantPairs, "$1");
-					parts.displayName += str;
-					parts.unescapedDisplayName += str.replace(/\\(.)/g, "$1");
+		//get the domain
+		{
+			let host;
+			if(tokens[0].type === "domain-literal"){
+				if(tokens[0].value.length > 255) return null;	//too long
+				parts.domain = tokens[0].value;
+				tokens.shift();
+			}
+			else if( (tokens[0].type === "atom" || tokens[0].type === "dot-atom") && (host = parseDNSHost(tokens[0].value)) ){
+				if(host.ip && host.ip.v4){
+					tokens[0].value = "[" + host.ip.v4 + "]";	//IPv4 domain-literal
 				}
 				else{
-					parts.displayName += tokens[0].value;
-					parts.unescapedDisplayName += tokens[0].value;
+					tokens[0].value = host.name;
 				}
-				
+				if(tokens[0].value.length > 255) return null;	//too long
+				parts.domain = tokens[0].value;
 				tokens.shift();
-				
 			}
-			parts.displayName = parts.displayName.replace(/[\t ]+/g, " ").trim();
-			parts.unescapedDisplayName = parts.unescapedDisplayName.replace(/[\t ]+/g, " ").trim();
+			else{
+				return null;
+			}
 		}
 		
-		if(foundAngleBracket){
+		while(tokens.length && tokens[0].type === "wsp"){
 			tokens.shift();
 		}
-		if(tokens[0].type === "wsp"){
+		if(angleBrackets){
+			if(!tokens.length || tokens[0].value !== ">") return null;
 			tokens.shift();
+			while(tokens.length && tokens[0].type === "wsp"){
+				tokens.shift();
+			}
 		}
-		if(tokens[0].type === "quoted-string"){	//local part is a quoted-string
-			tokens[0].value = tokens[0].value.replace(rxp_redundantPairs, "$1");
-		}
-		parts.localPart = tokens[0].value;
-		parts.unescapedLocalPart = parts.localPart.replace(/\\(.)/g, "$1");
-		tokens.shift();
-		
-		tokens.shift();	//the "@"
-		
-		parts.domain = tokens[0].value;
-		
-		//ignore any remaining characters
+		if(tokens.length) return null;	//extraneous characters
 		
 		parts.simple = parts.localPart+"@"+parts.domain;
-		parts.unescapedSimple = parts.unescapedLocalPart+"@"+parts.domain;
 		
-		parts.full = foundDisplayName ? parts.displayName+" <"+parts.simple+">" : parts.simple;
-		parts.unescapedFull = foundDisplayName ? parts.unescapedDisplayName+" <"+parts.unescapedSimple+">" : parts.unescapedSimple;
+		parts.full = parts.displayName ? parts.displayName+" <"+parts.simple+">" : parts.simple;
 		
 	}
 	
@@ -1601,8 +1564,8 @@ function parseDNSHost(host){
 	
 	try{
 		host = parseHost(host);
-		if(!(host.ip || host.domain)) return null;
-		if(host.length > 255) return null;
+		if(!(host.ip || host.name)) return null;
+		if(host.toString().length > 255) return null;
 		return host;
 	}catch(e){
 		return null;
