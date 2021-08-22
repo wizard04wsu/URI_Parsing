@@ -20,7 +20,7 @@
 
 /** @module URI */
 
-export { URI as default, isDNSDomain, parseMailbox, fixHyperlink };
+export { URI as default, URIError, isDNSDomain, parseMailbox };
 
 
 /**
@@ -61,24 +61,39 @@ export { URI as default, isDNSDomain, parseMailbox, fixHyperlink };
  * @returns {boolean} - Truthy if the URI conforms to the scheme, falsy if not.
  */
 
+/**
+ * This error type is thrown if a URI is invalid or unsupported.
+ * @extends Error
+ */
+class URIError extends Error {
+	constructor(message, options){
+		super(message, options);
+	}
+}
+
 
 /**
  * Normalizes a URI, and splits it into its parts. The members vary depending on the scheme.
  * @alias module:URI
  * @param {string} uri
  * @returns {ParsedURI} - The normalized URI and its parts. The members vary depending on the scheme.
- * @throws {Error} - If the scheme is known and the URI does not conform to it.
+ * @throws {URIError} - If the scheme is known and the URI does not conform to it.
  */
 function URI(uri){
 	
 	const parsed = parseURI(uri);
 	
-	if(URI.schemeParsers && URI.schemeParsers[parsed.scheme] instanceof Function){
+	if(URI.schemeParser && URI.schemeParser[parsed.scheme] instanceof Function){
 		//there is a scheme-specific parser for this URI's scheme
 		
 		//do scheme-specific normalization and parsing
-		let valid = URI.schemeParsers[parsed.scheme](parsed);
-		if(!valid) throw new Error(`the URI does not conform to the ${parsed.scheme} scheme`);
+		try{
+			URI.schemeParser[parsed.scheme](parsed);
+		}catch(e){
+			if(e instanceof URIError)
+				throw new URIError(`the URI does not conform to the ${parsed.scheme} scheme`, { cause: e });
+			throw e;
+		}
 	}
 	
 	return parsed;
@@ -93,21 +108,24 @@ URI.parseQuery = parseQuery;
 /**
  * A customizable collection of scheme-specific parsing functions.
  * @static
- * @name schemeParsers
+ * @name schemeParser
  * @type {object}
  */
-URI.schemeParsers = {
+URI.schemeParser = {
 	
 	/**
 	 * Scheme-specific parser for http URIs
 	 * @type {SchemeParser}
 	 */
 	http(p){
+		if(p.scheme !== "http")
+			throw new RangeError("scheme does not match");
+		
 		if(!p.authority || !p.authority.host)
-			return false;	//no host
+			throw new URIError("the URI does not include a host");
 		
 		if(!p.authority.host.ip && !isDNSDomain(p.authority.host.name))
-			return false;	//host is neither an IP address nor a DNS domain name
+			throw new URIError("the host is neither an IP address nor a DNS domain name");
 		
 		p.authority.port = p.authority.port || "80";
 		p.path = removeDotSegments(p.path) || "/";
@@ -116,8 +134,6 @@ URI.schemeParsers = {
 		defineNonEnumerableProperty(p.authority, "toString", function toString(){
 			return (this.userinfo ? this.userinfo+"@" : "") + this.host + (this.port && this.port !== "80" ? ":"+this.port : "");
 		});
-		
-		return true;
 	},
 	
 	/**
@@ -125,11 +141,14 @@ URI.schemeParsers = {
 	 * @type {SchemeParser}
 	 */
 	https(p){
+		if(p.scheme !== "https")
+			throw new RangeError("scheme does not match");
+		
 		if(!p.authority || !p.authority.host)
-			return false;	//no host
+			throw new URIError("the URI does not include a host");
 		
 		if(!p.authority.host.ip && !isDNSDomain(p.authority.host.name))
-			return false;	//host is neither an IP address nor a DNS domain name
+			throw new URIError("the host is neither an IP address nor a DNS domain name");
 		
 		p.authority.port = p.authority.port || "443";
 		p.path = removeDotSegments(p.path) || "/";
@@ -138,8 +157,6 @@ URI.schemeParsers = {
 		defineNonEnumerableProperty(p.authority, "toString", function toString(){
 			return (this.userinfo ? this.userinfo+"@" : "") + this.host + (this.port && this.port !== "443" ? ":"+this.port : "");
 		});
-		
-		return true;
 	},
 	
 	/**
@@ -156,7 +173,11 @@ URI.schemeParsers = {
 	 * See: RFC 3986   https://tools.ietf.org/html/rfc3986
 	 */
 	mailto(p){
-		if(p.authority) return false;
+		if(p.scheme !== "mailto")
+			throw new RangeError("scheme does not match");
+		
+		if(p.authority)
+			throw new URIError("the URI includes an authority");
 		
 		p.fragment = "";
 		p.query = parseQuery(p.query);
@@ -253,7 +274,7 @@ URI.schemeParsers = {
 			}
 			
 			if(p.to.length + p.cc.length + p.bcc.length === 0)
-				return false;	//no destination
+				throw new URIError("the URI does not include a valid destination address");
 			
 		}
 		
@@ -291,8 +312,6 @@ URI.schemeParsers = {
 			
 		}
 		
-		return true;
-		
 	}
 	
 };
@@ -304,7 +323,7 @@ URI.schemeParsers = {
  * @param {string} uri
  * @returns {ParsedURI} - The normalized URI and its generic parts.
  * @throws {TypeError}
- * @throws {Error} - If it's not a valid URI.
+ * @throws {URIError} - If it's not a valid URI.
  * @see [RFC 3986](https://tools.ietf.org/html/rfc3986)
  */
 function parseURI(uri){
@@ -360,7 +379,7 @@ function parseURI(uri){
 	*/
 	
 	/*let parts = rxp.exec(uri);
-	if(!parts) throw new Error("'uri' is not a valid URI");
+	if(!parts) throw new URIError("'uri' is not a valid URI");
 	parts = parts.groups;
 	
 	let scheme = parts.scheme.toLowerCase(),
@@ -410,7 +429,7 @@ function parseURI(uri){
 	*/
 	
 	let parts = rxp.exec(uri);
-	if(!parts) throw new Error("'uri' is not a valid URI");
+	if(!parts) throw new URIError("'uri' is not a valid URI");
 	
 	let scheme = parts[1].toLowerCase(),
 		authority = parts[2],
@@ -462,7 +481,7 @@ function parseURI(uri){
  * @param {string} baseURI - The URI that the reference is relative to.
  * @returns {string} - The target URI.
  * @throws {TypeError}
- * @throws {Error} - If 'baseURI' is not a valid URI or 'relativeReference' is not acceptable.
+ * @throws {URIError} - If 'baseURI' is not a valid.
  * @see [RFC 3986, section 4.2](https://tools.ietf.org/html/rfc3986#section-4.2)
  * @see [RFC 3986, section 5.2.4](https://tools.ietf.org/html/rfc3986#section-5.2.4)
  */
@@ -478,12 +497,15 @@ function resolveRelativeURI(relativeReference, baseURI){
 	try{
 		let targetURI = parseURI(relativeReference);
 		return targetURI;	//it's already a full URI
-	}catch(e){}
+	}catch(e){
+		if(!(e instanceof URIError)) throw e;
+	}
 	
 	try{
 		baseURI = parseURI(baseURI);
 	}catch(e){
-		throw new Error("'baseURI' is not a valid URI");
+		if(e instanceof URIError) throw new URIError("'baseURI' is not a valid URI", { cause: e });
+		throw e;
 	}
 	
 	if(relativeReference === "") return baseURI;
@@ -509,9 +531,9 @@ function resolveRelativeURI(relativeReference, baseURI){
 			//add the base path
 			targetURI += baseURI.path;
 		}
-		else if(/^([a-z\d+.-]*):/u.test(relativeReference)){
-			throw new Error("the first path segment of 'relativeReference' contains a colon; consider preceding it with './'");
-		}
+		/*else if(/^([a-z\d+.-]*):/u.test(relativeReference)){
+			throw new URIError("the first path segment of 'relativeReference' contains a colon; consider preceding it with './'");
+		}*/
 		else{
 			//add the base path, up to the last "/"
 			targetURI += baseURI.path.match(/^(?:[^\/]*\/)*/u)[0];
@@ -520,7 +542,12 @@ function resolveRelativeURI(relativeReference, baseURI){
 	
 	targetURI += relativeReference;
 	
-	return parseURI(targetURI).toString();
+	try{
+		return parseURI(targetURI).toString();
+	}catch(e){
+		if(e instanceof URIError) throw new URIError("the relative reference could not be resolved", { cause: e });
+		throw e;
+	}
 	
 }
 
@@ -531,8 +558,8 @@ function resolveRelativeURI(relativeReference, baseURI){
  * @param {string} host
  * @returns {ParsedURI_host} - The normalized host (IP address or registered name) and related representations.
  * @throws {TypeError}
- * @throws {Error} - If it's not a valid host.
- * @throws {Error} - If the IP address literal format is not supported.
+ * @throws {URIError} - If it's not a valid host.
+ * @throws {URIError} - If the IP address literal format is not supported.
  * @see [How to Obscure Any URL](http://www.pc-help.org/obscure.htm)
  * @see [RFC 3986, section 3.2.2](https://tools.ietf.org/html/rfc3986#section-3.2.2) - Host
  * @see [RFC 3986, section 2](https://tools.ietf.org/html/rfc3986#section-2) - Characters
@@ -560,14 +587,14 @@ function parseHost(host){
 		else if(/^v[\da-f]\.[a-z\d._~!$&'()*+,;=:-]+$/ui.test(ipLiteral)){
 			//it's a future version of an IP address literal
 			
-			throw new Error(`version ${ipLiteral[1]} of the IP address literal format is not supported`);
+			throw new URIError(`version ${ipLiteral[1]} of the IP address literal format is not supported`);
 		}
 		else{
-			throw new Error("invalid IP address literal");
+			throw new URIError("invalid IP address literal");
 		}
 	}
 	else if(!(/^(?:[0-9a-z!$&'()*+,\-.;=_~]|%[0-9A-F]{2})*$/ui).test(host)){
-		throw new Error("host contains invalid characters");
+		throw new URIError("host contains invalid characters");
 	}
 	else{
 		//decode percent encodings of unreserved characters: DIGIT ALPHA -._~
@@ -1051,7 +1078,8 @@ function parseDNSHost(host){
 		host = parseHost(host);
 		if(host.ip || isDNSDomain(host.name)) return host;
 	}catch(e){
-		return null;
+		if(e instanceof URIError) return null;
+		throw e;
 	}
 	
 }
@@ -1376,230 +1404,6 @@ function parseMailbox(mailbox){
 	
 }
 
-/**
- * Attempts to fix a URI if it's invalid. It refers to the current page's location if the scheme or authority are missing, and encodes invalid characters.
- * 
- * @param {string} href - URI or relative reference to analyze and fix.
- * @return {object} - Null if the URI can't be fixed. Possible members:
- *   {function} .toString - Returns the fixed and normalized URI as a string.
- *   {string} .uri - Fixed and normalized URI.
- *   {string} .networkPathReference - Relative reference starting with "//" (relative to the scheme).
- *   {string} .absolutePathReference - Relative reference starting with a single "/" (relative to the root).
- *   {string} .relativePathReference - Relative reference not starting with a "/" (relative to the current document).
- *   {string} .sameDocumentReference - The fragment, including the "#".
- * 
- * See: RFC 3986   https://tools.ietf.org/html/rfc3986#section-4.2
- */
-function fixHyperlink(href){
-	
-	if(!href) return null;
-	
-	let given = href,
-		schemeFound,
-		authorityFound,
-		location = (window && window.location) ? window.location : {},
-		parts = {
-			scheme: "",	//including the colon
-			authority: "",
-			userinfo: "",
-			host: "",
-			port: "",
-			//relativePath: "",
-			//path: "",
-			query: "",
-			fragment: ""
-			};
-	
-	let ret = new URI(href);
-	if(ret) return valid(ret);	//URI is valid
-	
-	function valid(parsed){
-		let result = new String(parsed.uri),
-			qf = (""+parsed.query?"?"+parsed.query:"")+(parsed.fragment?"#"+parsed.fragment:"");
-		
-		result.uri = parsed.uri;
-		if(parsed.authority) result.networkPathReference = "//"+parsed.authority+parsed.path+qf;
-		if(parsed.path[0] === "/") result.absolutePathReference = parsed.path+qf;
-		if(parts && parts.relativePath !== void 0) result.relativePathReference = parts.relativePath+qf;
-		if(parsed.fragment) result.sameDocumentReference = "#"+parsed.fragment;
-		
-		return result;
-	}
-	
-	function getWindowAuthority(){
-		if(!schemeFound && location.hostname){
-			parts.userinfo = location.username;
-			if(location.password) parts.userinfo += ":"+location.password;
-			parts.host = location.hostname;
-			parts.port = location.port;
-			parts.authority = (parts.userinfo?parts.userinfo+"@":"") + parts.host + (parts.port?":"+parts.port:"");
-		}
-	}
-	
-	function getAuthority(href){
-		
-		let given = href;
-		
-		function notFound(){
-			getWindowAuthority();
-			return given;
-		}
-		
-		//get userinfo
-		
-		let ret = /^([^@:\/\[]*)@/.exec(href);
-		if(ret){	//userinfo
-			parts.userinfo = ret[1];
-			//percent-encode illegal characters
-			parts.userinfo = parts.userinfo.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
-			href = href.slice(ret[0].length);
-		}
-		
-		//get host
-		
-		ret = /^\[([a-f0-9:.\]]*)\](?=[:\/?#]|$)/i.exec(href);
-		if(ret){	//possibly valid IPv6
-			ret = normalizeIPv6(ret[1]);
-			if(ret){	//valid IPv6
-				parts.host = "["+ret.host+"]";
-				href = href.slice(ret[0].length);
-			}
-			else{
-				return notFound();
-			}
-		}
-		else{
-			ret = /^([^:\/]*)(?=[:\/?#]|$)/.exec(href);
-			if(ret){	//possible host
-				let ret2 = parseDNSHost(ret[1]);
-				if(ret2){	//valid host
-					parts.host = ret2.host;
-					href = href.slice(ret[0].length);
-				}
-				else{
-					return notFound();
-				}
-			}
-			else{
-				return notFound();
-			}
-		}
-		
-		//get port
-		
-		ret = /^:(\d*)(?=[\/?#]|$)/.exec(href);
-		if(ret){	//port
-			parts.port = ret[1];
-			href = href.slice(ret[0].length);
-		}
-		else if(href[0] === ":"){
-			return  notFound();
-		}
-		
-		parts.authority = (parts.userinfo?parts.userinfo+"@":"") + parts.host + (parts.port?":"+parts.port:"");
-		authorityFound = true;
-		return href;	//valid authority found; return remainder
-		
-	}
-	
-	function getPQF(href){
-		
-		if(!href) return;
-		
-		//get path
-		
-		let ret = /^[^?#]*/g.exec(href)[0];
-		href = href.slice(ret.length);
-		
-		//percent-encode illegal characters
-		ret = ret.replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@\/%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
-		
-		let path = normalizePath(ret);
-		if(!schemeFound && !authorityFound && path[0] !== "/"){
-				parts.relativePath = path;
-				if(location.pathname !== void 0) parts.path = location.pathname.replace(/(^|\/)[^\/]*$/, "/"+path);
-		}
-		else{
-			parts.path = path;
-		}
-		
-		//get query
-		
-		ret = /^(\?[^#]*)?/.exec(href)[0];
-		href = href.slice(ret.length);
-		
-		//percent-encode illegal characters
-		ret = ret.slice(1).replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@\/?%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
-		
-		parts.query = normalizeQueryOrFragment(ret);
-		
-		//get fragment
-		
-		if(href){
-			//percent-encode illegal characters
-			href = href.slice(1).replace(/(?:[^a-z0-9-._~!$&'()*+,;=:@\/?%]|%(?![0-9A-F]{2}))+/ig, function (match){ return encodeURIComponent(match); });
-			
-			parts.fragment = normalizeQueryOrFragment(href);
-		}
-		
-	}
-	
-	//get scheme
-	let scheme = (/^([a-z][a-z0-9+.-]*):/i).exec(href);
-	if(scheme){
-		scheme = scheme[0].toLowerCase();
-		href = href.slice(scheme.length);
-		schemeFound = true;
-	}
-	else{
-		scheme = location.protocol || "http:";
-		if( (ret = new URI(scheme+href)) ) return valid(ret);
-	}
-	parts.scheme = scheme;
-	
-	if(/^https?:$/.test(scheme)){
-		if(/^\/\//.test(href)){	//it has an authority
-			href = getAuthority(href.slice(2)) || "/";
-		}
-		else{
-			getWindowAuthority();
-		}
-		if(!parts.authority) return null;	//can't fix it
-	}
-	else{
-		if(/^\/\//.test(href)){	//it has an authority
-			href = getAuthority(href.slice(2));
-			if(!parts.authority) return null;	//can't fix it
-		}
-	}
-	
-	getPQF(href);	//get path, query, and fragment
-	
-	if(parts.path === void 0) return null;	//can't fix it
-	
-	if(/^https?:$/.test(parts.scheme)){
-		parts.path = removeDotSegments(parts.path);
-		parts.relativePath = removeDotSegments(parts.relativePath, true);
-	}
-	
-	ret = new URI(parts.scheme + (parts.authority ? "//"+parts.authority : "") + parts.path + "?"+parts.query + "#"+parts.fragment);
-	if(ret) return valid(ret);	//fixed URI
-	
-	
-	if(!schemeFound && /^[^:\/?#]*:/.test(given)){
-	//broken hyperlink is possibly a relative path, with the first segment including a colon
-		if(location.scheme){
-			getWindowAuthority();
-			return fixHyperlink(location.scheme + (parts.authority ? "//"+parts.authority : "") + href);
-		}
-		else{
-			return null;	//can't fix it
-		}
-	}
-	
-	return null;	//can't fix it
-	
-}
 
 
 
