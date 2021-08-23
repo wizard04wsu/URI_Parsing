@@ -1,4 +1,4 @@
-import URI, {URIError, isDNSDomain, parseMailbox} from "https://cdn.jsdelivr.net/gh/wizard04wsu/URI_Parsing@jsfiddle-demo/src/uri_parsing.js"
+import URI, {URIError, isDNSDomain, parseMailbox} from "https://cdn.jsdelivr.net/gh/wizard04wsu/URI_Parsing@dev/src/uri_parsing.mjs"
 
 console.clear();
 
