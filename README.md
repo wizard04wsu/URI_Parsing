@@ -10,7 +10,7 @@ This script does not support:
 
 This is a JavaScript module. It can be imported into your script like so: `import URI, {URIError, isDNSDomain, removeDotSegments} from "uri_parsing.mjs"`
 
-[Try it on JSFiddle](https://jsfiddle.net/wizard04/896dmhga/45/)
+[Try it on JSFiddle](https://jsfiddle.net/wizard04/896dmhga/)
 
 ---
 
