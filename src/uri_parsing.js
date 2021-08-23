@@ -20,8 +20,6 @@
 
 /** @module URI */
 
-export { URI as default, URIError, isDNSDomain, parseMailbox };
-
 
 /**
  * A URI and its parts. The members vary depending on the scheme.
@@ -1419,3 +1417,7 @@ function defineNonEnumerableProperty(object, property, value){
 		value: value
 	});
 }
+
+
+
+export { URI as default, URIError, isDNSDomain, parseMailbox };
