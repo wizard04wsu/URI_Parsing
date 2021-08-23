@@ -10,6 +10,8 @@ This script does not support:
 
 This is a JavaScript module. It can be imported into your script like so: `import URI, {URIError, isDNSDomain, removeDotSegments} from "uri_parsing.mjs"`
 
+[Try it on JSFiddle](https://jsfiddle.net/gh/get/library/pure/wizard04wsu/URI_Parsing/demo/)
+
 ---
 
 ## URIs
@@ -124,22 +126,6 @@ Returns an object containing the normalized email address or mailbox and its par
 - *.displayName* &nbsp; {string}
 - *.localPart* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - Local part of the address (to the left of "@").
 - *.domain* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - Domain part of the address. Only DNS domains and IP addresses are deemed valid.
-
-## Hyperlinks
-
-**<samp style="background-color:transparent">ParseURI.fixHyperlink(*href*)</samp>**
-
-Attempts to fix a URI if it's invalid. It refers to the current document's location if the scheme or authority is missing, and encodes invalid characters. This method makes assumptions&mdash;the resulting URI might not be exactly what was intended.
-
-Parameters:
-- *href* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - URI or relative reference to analyze and fix.
-
-Returns an object containing the fixed URI and any relative reference versions. Null if it can't be fixed. May contain these members:
-- *.uri* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - Fixed and normalized URI.
-- *.networkPathReference* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - Relative reference starting with "//" (relative to the scheme).
-- *.absolutePathReference* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - Relative reference starting with a single "/" (relative to the path root).
-- *.relativePathReference* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - Relative reference not starting with a "/" (relative to the current document).
-- *.sameDocumentReference* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - The fragment, including the "#".
 
 ---
 
