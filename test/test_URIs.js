@@ -1,4 +1,4 @@
-import URI, {isDNSDomain, fixHyperlink} from "../src/uri_parsing.mjs";
+import URI, {URIError, isDNSDomain, parseMailbox} from "../src/uri_parsing.mjs";
 
 function fixTest(ifHttp, ifNotHttp){
 	const loc = window.location;
@@ -64,23 +64,33 @@ const test = [
 
 console.group("URI parsing");
 	for(let i=0; i<test.length; i++){
-		const testSubject = (i+1)+". "+test[i][0]+"\n   ";
+		const testSubject = (i+1)+". "+test[i][0];
 		try{
 			const result = URI(test[i][0]);
 			if(result.toString() === test[i][1]){
-				console.log(testSubject, result);
+				console.groupCollapsed(testSubject);
+				console.log("Expected:\n   ", test[i][1]===null ? "(invalid)" : test[i][1]);
+				console.log("Result:\n   ", result.toString(), "\n   ", result);
 			}
 			else{
-				console.assert(false, testSubject, result);
+				console.group(testSubject);
+				console.log("Expected:\n   ", test[i][1]===null ? "(invalid)" : test[i][1]);
+				console.assert(false, "\nResult:\n   ", result.toString(), "\n   ", result);
 			}
 		}catch(e){
 			if(test[i][1] === null){
-				console.log(testSubject, "(invalid)");
+				console.groupCollapsed(testSubject);
+				console.log("Expected:\n   ", test[i][1]===null ? "(invalid)" : test[i][1]);
+				console.log("Result:\n    (invalid)");
 			}
 			else{
-				console.assert(false, testSubject, "Error: "+e.message);
+				console.group(testSubject);
+				console.log("Expected:\n   ", test[i][1]===null ? "(invalid)" : test[i][1]);
+				console.assert(false, "\nError:\n   ", e.message);
 				throw e;
 			}
+		}finally{
+			console.groupEnd();
 		}
 	}
 console.groupEnd();

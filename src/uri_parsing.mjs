@@ -118,20 +118,22 @@ URI.schemeParser = {
 	http(p){
 		if(p.scheme !== "http")
 			throw new RangeError("scheme does not match");
-		
 		if(!p.authority || !p.authority.host)
 			throw new URIError("the URI does not include a host");
-		
 		if(!p.authority.host.ip && !isDNSDomain(p.authority.host.name))
 			throw new URIError("the host is neither an IP address nor a DNS domain name");
 		
 		p.authority.port = p.authority.port || "80";
+		
+		defineStringPrimitive(p.authority, function (){
+			let authority = this.userinfo && ""+this.userinfo ? this.userinfo+"@" : "";
+			authority += this.host;
+			authority += this.port && this.port !== "80" ? ":"+this.port : "";
+			return authority;
+		});
+		
 		p.path = removeDotSegments(p.path) || "/";
 		p.query = parseQuery(p.query);
-		
-		defineNonEnumerableProperty(p.authority, "toString", function toString(){
-			return (this.userinfo ? this.userinfo+"@" : "") + this.host + (this.port && this.port !== "80" ? ":"+this.port : "");
-		});
 	},
 	
 	/**
@@ -141,20 +143,22 @@ URI.schemeParser = {
 	https(p){
 		if(p.scheme !== "https")
 			throw new RangeError("scheme does not match");
-		
 		if(!p.authority || !p.authority.host)
 			throw new URIError("the URI does not include a host");
-		
 		if(!p.authority.host.ip && !isDNSDomain(p.authority.host.name))
 			throw new URIError("the host is neither an IP address nor a DNS domain name");
 		
 		p.authority.port = p.authority.port || "443";
+		
+		defineStringPrimitive(p.authority, function (){
+			let authority = this.userinfo && ""+this.userinfo ? this.userinfo+"@" : "";
+			authority += this.host;
+			authority += this.port && this.port !== "443" ? ":"+this.port : "";
+			return authority;
+		});
+		
 		p.path = removeDotSegments(p.path) || "/";
 		p.query = parseQuery(p.query);
-		
-		defineNonEnumerableProperty(p.authority, "toString", function toString(){
-			return (this.userinfo ? this.userinfo+"@" : "") + this.host + (this.port && this.port !== "443" ? ":"+this.port : "");
-		});
 	},
 	
 	/**
@@ -173,7 +177,6 @@ URI.schemeParser = {
 	mailto(p){
 		if(p.scheme !== "mailto")
 			throw new RangeError("scheme does not match");
-		
 		if(p.authority)
 			throw new URIError("the URI includes an authority");
 		
@@ -438,7 +441,17 @@ function parseURI(uri){
 		query = normalizeQueryOrFragment(parts[10]),
 		fragment = normalizeQueryOrFragment(parts[11]);
 	
-	const parsed = {};
+	const parsed = new String();
+	
+	defineStringPrimitive(parsed, function (){
+		let uri = ""+this.scheme+":";
+		if(this.authority) uri += "//"+this.authority;
+		uri += this.path;
+		uri += (this.query && ""+this.query ? "?"+this.query : "");
+		uri += (this.fragment && ""+this.fragment ? "#"+this.fragment : "");
+		return uri;
+	});
+	
 	parsed.scheme = scheme;
 	parsed.path = path;
 	parsed.query = query;
@@ -447,26 +460,19 @@ function parseURI(uri){
 	if(authority !== void 0){
 		//the URI contains an authority (which could be empty)
 		
-		parsed.authority = {
-			userinfo: userinfo,
-			host: parseHost(host),
-			port: port,
-			[Symbol.toPrimitive](hint){ return (hint === "number") ? NaN : this.toString(); }
-		};
+		parsed.authority = new String();
 		
-		defineNonEnumerableProperty(parsed.authority, "toString", function toString(){
-			return (this.userinfo ? this.userinfo+"@" : "") + this.host + (this.port ? ":"+this.port : "");
+		defineStringPrimitive(parsed.authority, function (){
+			let authority = this.userinfo && ""+this.userinfo ? this.userinfo+"@" : "";
+			authority += this.host;
+			authority += this.port && ""+this.port ? ":"+this.port : "";
+			return authority;
 		});
+		
+		parsed.authority.userinfo = userinfo;
+		parsed.authority.host = parseHost(host);
+		parsed.authority.port = port;
 	}
-	
-	parsed[Symbol.toPrimitive] = function (hint){ return (hint === "number") ? NaN : this.toString(); };
-	
-	defineNonEnumerableProperty(parsed, "toString", function toString(){
-		let uri = ""+this.scheme+":";
-		if(this.authority) uri += "//"+this.authority;
-		uri += this.path + (this.query.toString() ? "?"+this.query : "") + (this.fragment.toString() ? "#"+this.fragment : "");
-		return uri;
-	});
 	
 	return parsed;
 	
@@ -616,25 +622,22 @@ function parseHost(host){
 		}
 	}
 	
-	const parsed = {
-		[Symbol.toPrimitive](hint){ return (hint === "number") ? NaN : this.toString(); }
-	};
+	let parsed = new String();
 	
-	defineNonEnumerableProperty(parsed, "toString", function toString(){
-		return this.ip ? this.ip.toString() : this.name;
+	defineStringPrimitive(parsed, function (){
+		return ""+(this.ip || this.name || "");
 	});
 	
 	if(ipv6){
-		parsed.ip = {
-			v4: ipv4,
-			v6mixed: ipv6mixed,
-			v6: ipv6,
-			[Symbol.toPrimitive](hint){ return (hint === "number") ? NaN : this.toString(); }
-		};
+		parsed.ip = new String();
 		
-		defineNonEnumerableProperty(parsed.ip, "toString", function toString(){
-			return this.v4 || this.v6mixed || this.v6;
+		defineStringPrimitive(parsed.ip, function (){
+			return ""+(this.v4 || this.v6mixed || this.v6 || "");
 		});
+		
+		parsed.ip.v4 = ipv4;
+		parsed.ip.v6mixed = ipv6mixed;
+		parsed.ip.v6 = ipv6;
 	}
 	else{
 		parsed.name = host;
@@ -993,14 +996,22 @@ function normalizeQueryOrFragment(queryOrFragment){
  */
 function parseQuery(query, pairSeparator = "&", keyValueSeparator = "="){
 	
-	let empty = new String("");
-	empty.pairs = [];
+	const parsed = new String();
 	
-	if(query === void 0) return empty;
+	defineStringPrimitive(parsed, function (){
+		let result = ""
+		for(const pair of this.pairs){
+			if(result) result += pairSeparator;
+			result += encodeURIComponent(pair.key) + keyValueSeparator + encodeURIComponent(pair.value);
+		}
+		return result;
+	});
+	
+	parsed.pairs = [];
+	
+	if(query === void 0) return parsed;
 	query = ""+query;
-	if(query === "") return empty;
-	
-	empty = void 0;
+	if(query === "") return parsed;
 	
 	
 	query = normalizeQueryOrFragment(query);
@@ -1019,25 +1030,9 @@ function parseQuery(query, pairSeparator = "&", keyValueSeparator = "="){
 		results.push( { key: decodeURIComponent(pair[0]), value: decodeURIComponent(pair[1]||"") } );
 	}
 	
-	const ret = {
-		pairs: results,
-		[Symbol.toPrimitive](hint){
-			if(hint === "number") return NaN;
-			
-			return this.toString();
-		}
-	};
+	parsed.pairs = results;
 	
-	defineNonEnumerableProperty(ret, "toString", function toString(){
-		let qs = ""
-		for(const pair of results){
-			if(qs) qs += pairSeparator;
-			qs += encodeURIComponent(pair.key) + keyValueSeparator + encodeURIComponent(pair.value);
-		}
-		return qs;
-	});
-	
-	return ret;
+	return parsed;
 	
 }
 
@@ -1410,6 +1405,11 @@ function parseMailbox(mailbox){
 
 
 /* helper functions */
+
+function defineStringPrimitive(stringObj, toStringPrimitive){
+	defineNonEnumerableProperty(stringObj, "toString", function (){ return String(toStringPrimitive.apply(this)); });
+	defineNonEnumerableProperty(stringObj, "valueOf", function (){ return String(toStringPrimitive.apply(this)); });
+}
 
 function defineNonEnumerableProperty(object, property, value){
 	Object.defineProperty(object, property, {
