@@ -8,7 +8,7 @@ This script does not support:
 - IPvFuture literal address formats
 - obsolete syntaxes
 
-This is a JavaScript module. It can be imported into your script like so: `import URI, {URIError, isDNSDomain, removeDotSegments} from "uri_parsing.mjs"`
+This is a JavaScript module. It can be imported into your script like so: `import URI, {URIError, defineStringPrimitive, isDNSDomain, parseMailbox} from "uri_parsing.mjs"`
 
 [Try it on JSFiddle](https://jsfiddle.net/wizard04/896dmhga/)
 

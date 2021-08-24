@@ -1,4 +1,4 @@
-import URI, {URIError, defineStringPrimitive, isDNSDomain, parseMailbox} from "../src/uri_parsing.mjs";
+import URI from "../src/uri_parsing.mjs";
 
 function fixTest(ifHttp, ifNotHttp){
 	const loc = window.location;
@@ -7,11 +7,11 @@ function fixTest(ifHttp, ifNotHttp){
 
 const test = [
 		["", null],
-		["a", null, fixTest("/a","a")],
+		["a", null],
 		["a:", "a:"],
-		[":", null, fixTest("/:",":")],
+		[":", null],
 		["a:b", "a:b"],
-		[":b", null, fixTest("/:b",":b")],
+		[":b", null],
 		["a:/", "a:/"],
 		["a:b/", "a:b/"],
 		["a:/b", "a:/b"],
@@ -26,10 +26,10 @@ const test = [
 		["a:../b/c", "a:../b/c"],
 		["a:/../b/c", "a:/../b/c"],
 		["a://b/../../././.././../c/./d/../e", "a://b/../../././.././../c/./d/../e"],
-		["../a", null, fixTest("/a","../a")],
-		["a:?b=?#&c#d", null, "a:?b=?#&c%23d"],
+		["../a", null],
+		["a:?b=?#&c#d", null],
 		["Aa://Bb@Cc/Dd", "aa://Bb@cc/Dd"],
-		["a:[", null, "a:%5B"],
+		["a:[", null],
 		
 		
 		["http:", null],
@@ -94,32 +94,3 @@ console.group("URI parsing");
 		}
 	}
 console.groupEnd();
-
-/*console.group("URI fix assertions");
-	for(let i=0, result; i<test.length; i++){
-		result = ParseURI.fixHyperlink(test[i][0]);
-		if(test[i][2] === void 0) test[i][2] = test[i][1];
-		if(test[i][2] === null){
-			console.assert(result === null, "Fix "+(i+1)+". "+test[i][0]+" --> "+(result && result.uri));
-			if(result !== null) console.log(result);
-		}
-		else{
-			console.assert(result && result.uri === test[i][2], "Fix "+(i+1)+":  "+test[i][0]+" --> "+(result ? result.uri : "null"));
-			if(result && result.uri !== test[i][2]) console.log(result);
-		}
-	}
-console.groupEnd();
-
-console.groupCollapsed("URI fix objects");
-	for(let i=0, result; i<test.length; i++){
-		result = ParseURI.fixHyperlink(test[i][0]);
-		console.log(test[i][0], result);
-	}
-console.groupEnd();
-
-console.groupCollapsed("Email addresses");
-	console.log(ParseURI.emailAddress("foo \"ba\\\"r \cd\"baz < foo@bar.baz >"));
-	console.log(ParseURI.emailAddress("\"f.oo\"@bar.baz"));
-	console.log(ParseURI.emailAddress("\"f oo\"@bar.baz"));
-	console.log(ParseURI.fixHyperlink("http://foo"));
-console.groupEnd();*/

@@ -585,8 +585,13 @@ function parseHost(host){
 		if( (ipv6 = normalizeIPv6(ipLiteral, false)) ){
 			//it's a valid IPv6 address
 			
-			ipv4 = v6to4(ipv6mixed);
-			if(ipv4) ipv6mixed = normalizeIPv6(ipLiteral);
+			ipv4 = v6to4(ipv6);
+			if(ipv4){
+				ipv6mixed = "::ffff:"+ipv4;
+				if(!(/^::ffff:/ui).test(ipv6)){
+					ipv6 = "::ffff:"+ipv6.slice(2);
+				}
+			}
 		}
 		else if(/^v[\da-f]\.[a-z\d._~!$&'()*+,;=:-]+$/ui.test(ipLiteral)){
 			//it's a future version of an IP address literal
@@ -673,9 +678,14 @@ function v6to4(ip){
 			a = (h-b)/256;
 		return a+"."+b;
 	}
+	
 	let ret;
-	if(ret = /^::ffff:([0-9.]+)$/ui.exec(ip)) return ret[1];
-	if(ret = /^::ffff:([^:]+):([^:]+)$/ui.exec(ip)) return hexToDec(ret[1]) + "." + hexToDec(ret[2]);
+	
+	//IPv4-compatible IPV6 addresses (deprecated)
+	//IPv4-mapped IPv6 addresses
+	if(ret = /^::(?:ffff:)?([0-9.]+)$/ui.exec(ip)) return ret[1];
+	if(ret = /^::(?:ffff:)?([^:]+):([^:]+)$/ui.exec(ip)) return hexToDec(ret[1]) + "." + hexToDec(ret[2]);
+	
 	return void 0;	//can't be converted to IPv4
 }
 
@@ -1254,7 +1264,7 @@ function parseMailbox(mailbox){
 				//remove redundant pairs from the quoted string
 				const quoteContent = localPart.value.slice(1,-1).replace(rxp_redundantPairs, "$1");
 				
-				if(newRxp(rxpDotAtom).test(quoteContent)){
+				if(newRxp(rxpDotAtom+"$").test(quoteContent)){
 					//quotes are unnecessary since their content is a dot-atom
 					return quoteContent;
 				}
