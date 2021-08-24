@@ -1420,4 +1420,4 @@ function defineNonEnumerableProperty(object, property, value){
 
 
 
-export { URI as default, URIError, isDNSDomain, parseMailbox };
+export { URI as default, URIError, defineStringPrimitive, isDNSDomain, parseMailbox };

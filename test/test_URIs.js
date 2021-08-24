@@ -1,4 +1,4 @@
-import URI, {URIError, isDNSDomain, parseMailbox} from "../src/uri_parsing.mjs";
+import URI, {URIError, defineStringPrimitive, isDNSDomain, parseMailbox} from "../src/uri_parsing.mjs";
 
 function fixTest(ifHttp, ifNotHttp){
 	const loc = window.location;
