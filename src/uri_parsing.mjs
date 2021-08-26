@@ -42,9 +42,15 @@ class SegmentedString extends String {
 	 * @param {Object} [initialMembers={}] - An object containing the properties that should be attached to the SegmentedString during its construction.
 	 */
 	constructor(toPrimitive, initialMembers = {}){
+		if(typeof toPrimitive !== "function") throw new TypeError("'toPrimitive' must be a function");
+		if(initialMembers === void 0) initialMembers = {};
+		if(typeof initialMembers !== "object") throw new TypeError("'initialMembers' must be an object");
+		
 		super();
+		
 		defineNonEnumerableProperty(this, "toString", function (){ return String(toPrimitive.apply(this)); });
 		defineNonEnumerableProperty(this, "valueOf", function (){ return String(toPrimitive.apply(this)); });
+		
 		for(const prop in initialMembers){
 			if(initialMembers.hasOwnProperty(prop))
 				this[prop] = initialMembers[prop];
