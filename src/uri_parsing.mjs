@@ -22,6 +22,38 @@
 
 
 /**
+ * This error type is thrown if a URI is invalid or unsupported.
+ * @extends Error
+ */
+class URIError extends Error {
+	constructor(message, options){
+		super(message, options);
+	}
+}
+
+/**
+ * A String object whose properties are substrings.
+ * @extends String
+ */
+class SegmentedString extends String {
+	/**
+	 * @constructor
+	 * @param {Function} toPrimitive - Returns a primitive string representing the SegmentedString. This function will be used when the SegmentedString must be coerced into a primitive value.
+	 * @param {Object} [initialMembers={}] - An object containing the properties that should be attached to the SegmentedString during its construction.
+	 */
+	constructor(toPrimitive, initialMembers = {}){
+		super();
+		defineNonEnumerableProperty(this, "toString", function (){ return String(toPrimitive.apply(this)); });
+		defineNonEnumerableProperty(this, "valueOf", function (){ return String(toPrimitive.apply(this)); });
+		for(const prop in initialMembers){
+			if(initialMembers.hasOwnProperty(prop))
+				this[prop] = initialMembers[prop];
+		}
+	}
+}
+
+
+/**
  * A URI and its parts. The members vary depending on the scheme.
  * @typedef {string} ParsedURI
  * @property {string} scheme
@@ -32,42 +64,32 @@
  */
 /**
  * An authority and its applicable parts.
- * @typedef {string} ParsedURI_authority
+ * @typedef {SegmentedString} ParsedURI_authority
  * @property {string} userinfo
  * @property {ParsedURI_host} host
  * @property {string} port
  */
 /**
  * A host (IP address or registered name) and any of its related representations.
- * @typedef {string} ParsedURI_host - An IPv4 address, an IP literal in square brackets, or a registered name.
+ * @typedef {SegmentedString} ParsedURI_host - An IPv4 address, an IP literal in square brackets, or a registered name.
  * @property {string|undefined} name - A registered name.
- * @property {string|undefined} ip - An IP address. (IPv4 is preferred, then IPv6 mixed, then IPv6 hex-only. Future versions are not supported.)
+ * @property {SegmentedString|undefined} ip - An IP address. (IPv4 is preferred, then IPv6 mixed, then IPv6 hex-only. Future versions are not supported.)
  * @property {string|undefined} ip.v4 - IPv4 address.
  * @property {string|undefined} ip.v6mixed - IPv6 address using mixed hexadecimal and dot-decimal notations to represent an IPv4-mapped IPv6 address.
  * @property {string|undefined} ip.v6 - IPv6 address using only hexadecimal notation.
  */
 /**
  * A query string and its key/value pairs.
- * @typedef {String} ParsedURI_query
+ * @typedef {SegmentedString} ParsedURI_query
  * @property {Array.<object>} pairs - Array of decoded key/value pairs (each pair is an object: {key, value}).
  */
 
 /**
  * A parser specific to a single scheme of URIs. This can modify the ParsedURI object that is passed to it.
  * @typedef {Function} SchemeParser
- * @param {ParsedURI} parsed
+ * @param {SegmentedString} parsed - The object created by the `parseURI` function. The object may be modified by this function.
  * @returns {boolean} - Truthy if the URI conforms to the scheme, falsy if not.
  */
-
-/**
- * This error type is thrown if a URI is invalid or unsupported.
- * @extends Error
- */
-class URIError extends Error {
-	constructor(message, options){
-		super(message, options);
-	}
-}
 
 
 /**
@@ -99,7 +121,7 @@ function URI(uri){
 }
 
 URI.parse = parseURI;
-URI.resolveRelativeURI = resolveRelativeURI;
+URI.resolveRelativeReference = resolveRelativeReference;
 URI.parseHost = parseHost;
 URI.parseQuery = parseQuery;
 
@@ -123,15 +145,16 @@ URI.schemeParser = {
 		if(!p.authority.host.ip && !isDNSDomain(p.authority.host.name))
 			throw new URIError("the host is neither an IP address nor a DNS domain name");
 		
+		p.authority = new SegmentedString(function (){
+				let primitive = this.userinfo && ""+this.userinfo ? this.userinfo+"@" : "";
+				primitive += this.host;
+				primitive += this.port && this.port !== "80" ? ":"+this.port : "";
+				return primitive;
+			},
+			p.authority
+		);
+		
 		p.authority.port = p.authority.port || "80";
-		
-		defineStringPrimitive(p.authority, function (){
-			let authority = this.userinfo && ""+this.userinfo ? this.userinfo+"@" : "";
-			authority += this.host;
-			authority += this.port && this.port !== "80" ? ":"+this.port : "";
-			return authority;
-		});
-		
 		p.path = removeDotSegments(p.path) || "/";
 		p.query = parseQuery(p.query);
 	},
@@ -148,15 +171,16 @@ URI.schemeParser = {
 		if(!p.authority.host.ip && !isDNSDomain(p.authority.host.name))
 			throw new URIError("the host is neither an IP address nor a DNS domain name");
 		
+		p.authority = new SegmentedString(function (){
+				let primitive = this.userinfo && ""+this.userinfo ? this.userinfo+"@" : "";
+				primitive += this.host;
+				primitive += this.port && this.port !== "443" ? ":"+this.port : "";
+				return primitive;
+			},
+			p.authority
+		);
+		
 		p.authority.port = p.authority.port || "443";
-		
-		defineStringPrimitive(p.authority, function (){
-			let authority = this.userinfo && ""+this.userinfo ? this.userinfo+"@" : "";
-			authority += this.host;
-			authority += this.port && this.port !== "443" ? ":"+this.port : "";
-			return authority;
-		});
-		
 		p.path = removeDotSegments(p.path) || "/";
 		p.query = parseQuery(p.query);
 	},
@@ -441,37 +465,37 @@ function parseURI(uri){
 		query = normalizeQueryOrFragment(parts[10]),
 		fragment = normalizeQueryOrFragment(parts[11]);
 	
-	const parsed = new String();
-	
-	defineStringPrimitive(parsed, function (){
-		let uri = ""+this.scheme+":";
-		if(this.authority) uri += "//"+this.authority;
-		uri += this.path;
-		uri += (this.query && ""+this.query ? "?"+this.query : "");
-		uri += (this.fragment && ""+this.fragment ? "#"+this.fragment : "");
-		return uri;
-	});
-	
-	parsed.scheme = scheme;
-	parsed.path = path;
-	parsed.query = query;
-	parsed.fragment = fragment;
+	const parsed = new SegmentedString(function (){
+			let primitive = ""+this.scheme+":";
+			if(this.authority) primitive += "//"+this.authority;
+			primitive += this.path;
+			primitive += (this.query && ""+this.query ? "?"+this.query : "");
+			primitive += (this.fragment && ""+this.fragment ? "#"+this.fragment : "");
+			return primitive;
+		},
+		{
+			scheme: scheme,
+			path: path,
+			query: query,
+			fragment: fragment
+		}
+	);
 	
 	if(authority !== void 0){
 		//the URI contains an authority (which could be empty)
 		
-		parsed.authority = new String();
-		
-		defineStringPrimitive(parsed.authority, function (){
-			let authority = this.userinfo && ""+this.userinfo ? this.userinfo+"@" : "";
-			authority += this.host;
-			authority += this.port && ""+this.port ? ":"+this.port : "";
-			return authority;
-		});
-		
-		parsed.authority.userinfo = userinfo;
-		parsed.authority.host = parseHost(host);
-		parsed.authority.port = port;
+		parsed.authority = new SegmentedString(function (){
+				let primitive = this.userinfo && ""+this.userinfo ? this.userinfo+"@" : "";
+				primitive += this.host;
+				primitive += this.port && ""+this.port ? ":"+this.port : "";
+				return primitive;
+			},
+			{
+				userinfo: userinfo,
+				host: parseHost(host),
+				port: port
+			}
+		);
 	}
 	
 	return parsed;
@@ -480,7 +504,7 @@ function parseURI(uri){
 
 /**
  * Determines the target URI of a relative reference.
- * @alias module:URI.resolveRelativeURI
+ * @alias module:URI.resolveRelativeReference
  * @param {string} relativeReference The relative reference.
  * @param {string} baseURI - The URI that the reference is relative to.
  * @returns {string} - The target URI.
@@ -489,7 +513,7 @@ function parseURI(uri){
  * @see [RFC 3986, section 4.2](https://tools.ietf.org/html/rfc3986#section-4.2)
  * @see [RFC 3986, section 5.2.4](https://tools.ietf.org/html/rfc3986#section-5.2.4)
  */
-function resolveRelativeURI(relativeReference, baseURI){
+function resolveRelativeReference(relativeReference, baseURI){
 	
 	if(!(typeof relativeReference === "string" || relativeReference instanceof String))
 		throw new TypeError("'relativeReference' is not a string");
@@ -627,22 +651,20 @@ function parseHost(host){
 		}
 	}
 	
-	let parsed = new String();
-	
-	defineStringPrimitive(parsed, function (){
+	let parsed = new SegmentedString(function (){
 		return ""+(this.ip || this.name || "");
 	});
 	
 	if(ipv6){
-		parsed.ip = new String();
-		
-		defineStringPrimitive(parsed.ip, function (){
-			return ""+(this.v4 || this.v6mixed || this.v6 || "");
-		});
-		
-		parsed.ip.v4 = ipv4;
-		parsed.ip.v6mixed = ipv6mixed;
-		parsed.ip.v6 = ipv6;
+		parsed.ip = new SegmentedString(function (){
+				return ""+(this.v4 || this.v6mixed || this.v6 || "");
+			},
+			{
+				v4: ipv4,
+				v6mixed: ipv6mixed,
+				v6: ipv6
+			}
+		);
 	}
 	else{
 		parsed.name = host;
@@ -1006,18 +1028,18 @@ function normalizeQueryOrFragment(queryOrFragment){
  */
 function parseQuery(query, pairSeparator = "&", keyValueSeparator = "="){
 	
-	const parsed = new String();
-	
-	defineStringPrimitive(parsed, function (){
-		let result = ""
-		for(const pair of this.pairs){
-			if(result) result += pairSeparator;
-			result += encodeURIComponent(pair.key) + keyValueSeparator + encodeURIComponent(pair.value);
+	const parsed = new SegmentedString(function (){
+			let result = ""
+			for(const pair of this.pairs){
+				if(result) result += pairSeparator;
+				result += encodeURIComponent(pair.key) + keyValueSeparator + encodeURIComponent(pair.value);
+			}
+			return result;
+		},
+		{
+			pairs: []
 		}
-		return result;
-	});
-	
-	parsed.pairs = [];
+	);
 	
 	if(query === void 0) return parsed;
 	query = ""+query;
@@ -1416,11 +1438,6 @@ function parseMailbox(mailbox){
 
 /* helper functions */
 
-function defineStringPrimitive(stringObj, toStringPrimitive){
-	defineNonEnumerableProperty(stringObj, "toString", function (){ return String(toStringPrimitive.apply(this)); });
-	defineNonEnumerableProperty(stringObj, "valueOf", function (){ return String(toStringPrimitive.apply(this)); });
-}
-
 function defineNonEnumerableProperty(object, property, value){
 	Object.defineProperty(object, property, {
 		writable: true, enumerable: false, configurable: true,
@@ -1428,6 +1445,6 @@ function defineNonEnumerableProperty(object, property, value){
 	});
 }
 
+/* module export */
 
-
-export { URI as default, URIError, defineStringPrimitive, isDNSDomain, parseMailbox };
+export { URI as default, URIError, SegmentedString, isDNSDomain, parseMailbox };

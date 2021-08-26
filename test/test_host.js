@@ -1,4 +1,4 @@
-import URI, {URIError, defineStringPrimitive, isDNSDomain, parseMailbox} from "../src/uri_parsing.mjs";
+import URI from "../src/uri_parsing.mjs";
 
 function test(expectedOutput, property, ...input){
 	let result;

@@ -1,94 +1,125 @@
-# URI Parsing
+# Parsing for URIs and Email Addresses
 
 JavaScript functions for validating, normalizing, and parsing URIs and email addresses.
 
+Scheme-specific processing can be easily added. Processing for *http*, *https*, and *mailto* schemes is already included.
+
 This script does not support:
 - internationalized domain names (IDNs)
-- non-ASCII email addresses
 - IPvFuture literal address formats
 - obsolete syntaxes
+- non-ASCII email addresses
 
-This is a JavaScript module. It can be imported into your script like so: `import URI, {URIError, defineStringPrimitive, isDNSDomain, parseMailbox} from "uri_parsing.mjs"`
+This is a JavaScript module that exports: [`URI`](#uri) (default), [`URIError`](#urierror), [`SegmentedString`](#SegmentedString), `isDNSDomain`, `parseMailbox`
 
 [Try it on JSFiddle](https://jsfiddle.net/wizard04/896dmhga/)
 
 ---
 
-## URIs
+## URI Parsing
 
-**<samp style="background-color:transparent">URI(*uri*)</samp>**
+### URI()
 
-Validates and normalizes a URI, splits it into its parts, and does any [additional processing for defined schemes](#schemeParser).
+The **URI()** function validates and normalizes a URI, splits it into its parts, and does any [additional processing for defined schemes](#scheme-parsers).
 
-Parameters:
-- *uri* &nbsp; {string}
-
-Returns an object containing the URI and its parts. Throws a [URIError](#urierror) if the URI is invalid.
-
-
-**<samp style="background-color:transparent">URI.parse(*uri*)</samp>**
-
-Normalizes a URI and splits it into its generic parts.
+Syntax:
+> `URI(uri)`
 
 Parameters:
-- *uri* &nbsp; {string}
+- ***uri*** - (string) A URI.
 
-Returns an object containing the URI's generic parts. The object and the objects it contains have overridden `toString` methods. Throws a [URIError](#urierror) if the URI is invalid.
-- *.scheme* &nbsp; {string}
-- *.authority* &nbsp; {object}
-    - *.userinfo* &nbsp; {string}
-    - *.host* &nbsp; {object}
-        - *.name* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - A registered name.
-        - *.ip* &nbsp; {object} &nbsp;&nbsp;&nbsp;&nbsp; - An IP address. (IPv4 is preferred, then IPv6 mixed, then IPv6 hex-only.)
-            - *.v4* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - IPv4 address.
-            - *.v6mixed* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - IPv6 address using mixed hexadecimal and dot-decimal notations to represent an IPv4-mapped IPv6 address.
-            - *.v6* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - IPv6 address using only hexadecimal notation.
-    - *.port* &nbsp; {string}
-- *.path* &nbsp; {string}
-- *.query* &nbsp; {string}
-- *.fragment* &nbsp; {string}
+Return value:
+- A [SegmentedString](#SegmentedString) object representing the normalized URI and its parts. Throws a [URIError](#urierror) if the URI is invalid or does not conform to its scheme's syntax.
 
 
-**<samp style="background-color:transparent">URI.resolveRelativeURI(*relativeReference*, *baseURI*)</samp>**
+### URI.parse()
 
-Determines the target URI of a relative reference.
+The static **URI.parse()** method validates and normalizes a URI and splits it into its generic parts. It does not do any scheme-specific processing.
+
+Syntax:
+> `URI.parse(uri)`
 
 Parameters:
-- *relativeReference* &nbsp; {string}
-- *baseURI* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - The URI that the reference is relative to.
+- ***uri*** - (string) A URI.
 
-Returns the target URI as a string.
+Return value:
+- A [SegmentedString](#SegmentedString) object representing the normalized URI and its parts. Throws a [URIError](#urierror) if the URI is invalid.
+
+| Property | Type | Description |
+| --- | --- | --- |
+| .**scheme** | string ||
+| .**authority** | SegmentedString | Undefined if the URI does not include an authority. |
+| .authority.**userinfo** | string ||
+| .authority.**host** | SegmentedString | Either a registered name (empty string included) or an IP address. |
+| .authority.host.**name** | string | A registered name. Undefined if the host is an IP address. |
+| .authority.host.**ip** | SegmentedString | An IP address. (IPv4 is preferred, then IPv6 mixed, then IPv6 hex-only.) Undefined if the host is a registered name. |
+| .authority.host.ip.**v4** | string | IPv4 address. Undefined if the host can't be represented as an IPv4 address. |
+| .authority.host.ip.**v6mixed** | string | IPv6 address using mixed hexadecimal and dot-decimal notations to represent an IPv4-mapped IPv6 address. Undefined if the host can't be represented as an IPv4 address. |
+| .authority.host.ip.**v6** | string | IPv6 address using only hexadecimal notation. |
+| .authority.**port** | string ||
+| .**path** | string ||
+| .**query** | string ||
+| .**fragment** | string ||
 
 
-**<samp style="background-color:transparent">URI.parseHost(*host*)</samp>**
+### URI.resolveRelativeReference()
 
-Converts an obscured host to a more readable one, along with related representations.
+The static URI.resolveRelativeReference() method determines the target URI of a relative reference.
+
+Syntax:
+> `URI.resolveRelativeReference(relativeReference, baseURI)`
 
 Parameters:
-- *host* &nbsp; {string}
+- ***relativeReference*** - (string) A relative reference.
+- ***baseURI*** - (string) The URI that the reference is relative to.
 
-Returns an object containing the normalized host (IP address or registered name) and related representations. The object and the objects it contains have overridden `toString` methods. Throws an error if it's not a valid host.
-- *.name* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - A registered name.
-- *.ip* &nbsp; {object} &nbsp;&nbsp;&nbsp;&nbsp; - An IP address. (IPv4 is preferred, then IPv6 mixed, then IPv6 hex-only.)
-    - *.v4* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - IPv4 address.
-    - *.v6mixed* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - IPv6 address using mixed hexadecimal and dot-decimal notations to represent an IPv4-mapped IPv6 address.
-    - *.v6* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - IPv6 address using only hexadecimal notation.
+Return value:
+- (string) The target URI.
 
 
-**<samp style="background-color:transparent">URI.parseQuery(*query*, *pairSeparator*, *keyValueSeparator*)</samp>**
+### URI.parseHost()
 
-Parses a query string as a sequence of key/value pairs.
+The static URI.parseHost() method converts an obscured host to a more readable one, along with related representations.
+
+Syntax:
+> `URI.parseHost(host)`
 
 Parameters:
-- *query* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - Query string without the leading "?".
-- *pairSeparator* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - String separating the key/value pairs. Default is `"&"`.
-- *keyValueSeparator* &nbsp; {string} &nbsp;&nbsp;&nbsp;&nbsp; - String separating a key from its value. Default is `"="`.
+- ***host*** - A string. A registered name or IP address.
 
-Returns the normalized query and its key/value pairs. The object has an overridden `toString` method.
-- *.pairs* &nbsp; {array} &nbsp;&nbsp;&nbsp;&nbsp; - Array of decoded key/value pairs. Each pair is an object with properties `key` and `value`.
+Return value:
+- A [SegmentedString](#SegmentedString) object representing the normalized host (IP address or registered name) and related representations. Throws a [URIError](#urierror) if it's not a valid host.
+
+| Property | Type | Description |
+| --- | --- | --- |
+| .**name** | string | A registered name. Undefined if the host is an IP address. |
+| .**ip** | SegmentedString | An IP address. (IPv4 is preferred, then IPv6 mixed, then IPv6 hex-only.) Undefined if the host is a registered name. |
+| .ip.**v4** | string | IPv4 address. Undefined if the host can't be represented as an IPv4 address. |
+| .ip.**v6mixed** | string | IPv6 address using mixed hexadecimal and dot-decimal notations to represent an IPv4-mapped IPv6 address. Undefined if the host can't be represented as an IPv4 address. |
+| .ip.**v6** | string | IPv6 address using only hexadecimal notation. |
 
 
-### Scheme-specific Parsers
+### URI.parseQuery()
+
+The static URI.parseQuery() method parses a query string as a sequence of key/value pairs.
+
+Syntax:
+> `URI.parseQuery(query, pairSeparator, keyValueSeparator)`
+
+Parameters:
+- ***query*** - (string) Query string without the leading "?".
+- ***pairSeparator*** - (string) String separating the key/value pairs. Default is `"&"`.
+- ***keyValueSeparator*** - (string) String separating a key from its value. Default is `"="`.
+
+Return value:
+- A [SegmentedString](#SegmentedString) object representing the normalized query string and its key/value pairs.
+
+| Property | Type | Description |
+| --- | --- | --- |
+| .**pairs** | array | An array of decoded key/value pairs. Each pair is an object with properties `key` and `value`. |
+
+
+## Scheme-specific Parsers
 
 
 
@@ -111,7 +142,7 @@ Returns the normalized query and its key/value pairs. The object has an overridd
 
 
 
-## Email Addresses
+## Email Address and Mailbox Parsing
 
 **<samp style="background-color:transparent">ParseURI.emailAddress(*address*)</samp>**
 
