@@ -1384,6 +1384,7 @@ function parseMailbox(mailbox){
 			break;
 		}
 		parts.displayName = parts.displayName || "";
+		parts.displayName = parts.displayName.replace(/\t/g, " ").replace(/ {2,}/g, " ").replace(/^("?) | {2,}| ("?)$/g, "$1$2");
 		
 		if(tokens[0].value !== "@") return null;
 		tokens.shift();
