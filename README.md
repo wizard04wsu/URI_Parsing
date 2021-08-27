@@ -10,7 +10,7 @@ This script does not support:
 - obsolete syntaxes
 - non-ASCII email addresses
 
-This is a JavaScript module that exports: [`URI`](#uri) (default), [`URIError`](#urierror), [`SegmentedString`](#segmentedstring), [`isDNSDomain`](#isdnsdomain), [`parseMailbox`](parsemailbox)
+This is a JavaScript module that exports: [`URI`](#uri) (default), [`URIError`](#urierror), [`SegmentedString`](#segmentedstring), [`isDNSDomain`](#isdnsdomain), [`parseMailbox`](#parsemailbox)
 
 [Try it on JSFiddle](https://jsfiddle.net/wizard04/896dmhga/)
 
@@ -144,7 +144,7 @@ Return value:
 
 The name of each of this object's methods corresponds to a URI scheme. Each method takes a generically parsed URI of its scheme and further processes it.
 
-Methods can be added to **URI.schemeParser** to handle any scheme. Methods are included for *[http](#uri-schemeparser-http-and-uri-schemeparser-https)*, *[https](#uri-schemeparser-http-and-uri-schemeparser-https)*, and *[mailto](#uri-schemeparser-mailto)*.
+Methods can be added to **URI.schemeParser** to handle any scheme. Methods are included for *[http](#urischemeparserhttp-and-urischemeparserhttps)*, *[https](#urischemeparserhttp-and-urischemeparserhttps)*, and *[mailto](#urischemeparsermailto)*.
 
 ### URI.schemeParser.http() and URI.schemeParser.https()
 
