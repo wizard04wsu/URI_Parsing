@@ -10,7 +10,7 @@ This script does not support:
 - obsolete syntaxes
 - non-ASCII email addresses
 
-This is a JavaScript module that exports: [`URI`](#uri) (default), [`URIError`](#urierror), [`SegmentedString`](#segmentedstring), [`isDNSDomain`](#isdnsdomain), [`parseMailbox`](#parsemailbox)
+This is a JavaScript module that exports: [`URI`](#uri) (default), [`SegmentedString`](#segmentedstring), [`isDNSDomain`](#isdnsdomain), [`parseMailbox`](#parsemailbox)
 
 [Try it on JSFiddle](https://jsfiddle.net/wizard04/896dmhga/)
 
@@ -29,10 +29,6 @@ Parameters:
 - ***toPrimitive*** - (function) This function is called when the object is being coerced into a primitive. Whatever it returns will be converted to a primitive string value.
 - ***initialMembers*** - (object) Optional. The enumerable properties of this object are added to the new instance of SegmentedString.
 
-### URIError
-
-The **URIError** class extends the **Error** class. It is simply used to differentiate an invalid or non-conforming URI from other types of errors.
-
 ---
 
 ## URI Parsing
@@ -48,7 +44,7 @@ Parameters:
 - ***uri*** - (string) A URI.
 
 Return value:
-- A [SegmentedString](#SegmentedString) object representing the normalized URI and its parts. Throws a [URIError](#urierror) if the URI is invalid or does not conform to its scheme's syntax.
+- A [SegmentedString](#SegmentedString) object representing the normalized URI and its parts. Throws a URIError if the URI is invalid or does not conform to its scheme's syntax.
 
 
 ### URI.parse()
@@ -62,7 +58,7 @@ Parameters:
 - ***uri*** - (string) A URI.
 
 Return value:
-- A [SegmentedString](#SegmentedString) object representing the normalized URI and its parts. Throws a [URIError](#urierror) if the URI is invalid.
+- A [SegmentedString](#SegmentedString) object representing the normalized URI and its parts. Throws a URIError if the URI is invalid.
 
 | Property | Type | Description |
 | --- | --- | --- |
@@ -107,7 +103,7 @@ Parameters:
 - ***host*** - (string) A registered name or IP address.
 
 Return value:
-- A [SegmentedString](#SegmentedString) object representing the normalized host (IP address or registered name) and related representations. Throws a [URIError](#urierror) if it's not a valid host.
+- A [SegmentedString](#SegmentedString) object representing the normalized host (IP address or registered name) and related representations. Throws a URIError if it's not a valid host.
 
 | Property | Type | Description |
 | --- | --- | --- |
@@ -158,7 +154,7 @@ Parameters:
 - ***parsed*** - ([SegmentedString](#SegmentedString)) The generically parsed URI. This object will be modified.
 
 Return value:
-- Nothing is returned. The ***parsed*** parameter is modified, adding the following properties. Throws a [URIError](#urierror) if the URI does not conform to the scheme.
+- Nothing is returned. The ***parsed*** parameter is modified, adding the following properties. Throws a URIError if the URI does not conform to the scheme.
 
 | Property | Type | Description |
 | --- | --- | --- |
@@ -175,7 +171,7 @@ Parameters:
 - ***parsed*** - ([SegmentedString](#SegmentedString)) The generically parsed *mailto*-schemed URI. This object will be modified.
 
 Return value:
-- Nothing is returned. The ***parsed*** parameter is modified, adding the following properties. Throws a [URIError](#urierror) if the URI does not conform to the scheme.
+- Nothing is returned. The ***parsed*** parameter is modified, adding the following properties. Throws a URIError if the URI does not conform to the scheme.
 
 | Property | Type | Description |
 | --- | --- | --- |

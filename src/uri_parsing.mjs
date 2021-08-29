@@ -22,16 +22,6 @@
 
 
 /**
- * This error type is thrown if a URI is invalid or unsupported.
- * @extends Error
- */
-class URIError extends Error {
-	constructor(message, options){
-		super(message, options);
-	}
-}
-
-/**
  * A String object whose properties are substrings.
  * @extends String
  */
@@ -1454,4 +1444,4 @@ function defineNonEnumerableProperty(object, property, value){
 
 /* module export */
 
-export { URI as default, URIError, SegmentedString, isDNSDomain, parseMailbox };
+export { URI as default, SegmentedString, isDNSDomain, parseMailbox };
