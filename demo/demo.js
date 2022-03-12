@@ -1,6 +1,4 @@
-import URI, {URIError, isDNSDomain, parseMailbox} from "https://cdn.jsdelivr.net/gh/wizard04wsu/URI_Parsing@jsfiddle-demo/src/uri_parsing.js"
-
-console.clear();
+import URI, {isDNSDomain, parseMailbox} from "https://cdn.jsdelivr.net/gh/wizard04wsu/URI_Parsing@jsfiddle-demo/src/uri_parsing.mjs"
 
 document.getElementById("parse_scheme").addEventListener("click", ()=>{
 	let val = document.getElementById("uri").value;
