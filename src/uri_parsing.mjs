@@ -273,24 +273,27 @@ URI.schemeParser = {
 			
 			p.to = p.path ? splitEmailAddresses(p.path) : [];
 			
-			let headers = p.query.pairs || [];
+			let headers = p.query.pairs ? p.query.pairs.map(p=>{return {
+				name: decodeURIComponent(p.key),
+				value: p.value
+			}}) : [];
 			for(let i=0; i<headers.length; i++){
 				if(headers[i].value === "") continue;
 				
-				headers[i].name = decodeURIComponent(headers[i].name);
-				if(headers[i].name === "to")
-					p.to = p.to.concat(splitEmailAddresses(headers[i].value));
-				else if(headers[i].name === "cc")
-					p.cc = p.cc.concat(splitEmailAddresses(headers[i].value));
-				else if(headers[i].name === "bcc")
-					p.bcc = p.bcc.concat(splitEmailAddresses(headers[i].value));
-				else if(headers[i].name === "subject")
-					p.subject += decodeURIComponent(headers[i].value);
-				else if(headers[i].name === "body")
-					p.body += decodeURIComponent(headers[i].value);
-				else{
-					headers[i].value = decodeURIComponent(headers[i].value);
-					p.headers.push(headers[i]);
+				switch(headers[i].name){
+					case "to":
+						p.to = p.to.concat(splitEmailAddresses(headers[i].value));
+					break; case "cc":
+						p.cc = p.cc.concat(splitEmailAddresses(headers[i].value));
+					break; case "bcc":
+						p.bcc = p.bcc.concat(splitEmailAddresses(headers[i].value));
+					break; case "subject":
+						p.subject += decodeURIComponent(headers[i].value);
+					break; case "body":
+						p.body += decodeURIComponent(headers[i].value);
+					break; default:
+						headers[i].value = decodeURIComponent(headers[i].value);
+						p.headers.push(headers[i]);
 				}
 			}
 			
@@ -1023,7 +1026,7 @@ function normalizeQueryOrFragment(queryOrFragment){
  * @see [RFC 3986, section 3.4](https://tools.ietf.org/html/rfc3986#section-3.4)
  */
 function parseQuery(query, pairSeparator = "&", keyValueSeparator = "="){
-	
+
 	const parsed = new SegmentedString(function (){
 			let result = ""
 			for(const pair of this.pairs){
