@@ -321,7 +321,7 @@ URI.schemeParser = {
 				query += "body=" + encodePart(p.body);
 			}
 			if(p.headers.length){
-				for(i=0; i<p.headers.length; i++){
+				for(let i=0; i<p.headers.length; i++){
 					if(query) query += "&";
 					query += encodePart(p.headers[i].name) + "=" + encodePart(p.headers[i].value);
 				}
