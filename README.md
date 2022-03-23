@@ -12,7 +12,7 @@ This script does not support:
 
 This is a JavaScript module that exports: [`URI`](#uri) (default), [`SegmentedString`](#segmentedstring), [`isDNSDomain`](#isdnsdomain), [`parseMailbox`](#parsemailbox)
 
-[Try it on JSFiddle](https://jsfiddle.net/wizard04/896dmhga/)
+[Try it on JSFiddle](https://jsfiddle.net/wizard04/evxog8r2/)
 
 ---
 
