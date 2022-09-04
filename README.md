@@ -208,14 +208,14 @@ Syntax:
 > `parseMailbox(mailbox)`
 
 Parameters:
-- ***mailbox*** - (string) An email address (e.g., *john.doe@example.com*) or mailbox (e.g., *"John Doe" <john.doe@example.com>*).
+- ***mailbox*** - (string) An email address (e.g., *john.doe@example.com*) or mailbox (e.g., *"John Doe" \<john.doe@example.com\>*).
 
 Return value:
 - An object containing the following properties. Returns `null` if the mailbox is invalid.
 
 | Property | Type | Description |
 | --- | --- | --- |
-| .**full** | string | If there is a display name: *"display name" <local@domain>*. If there isn't: *local@domain*. |
+| .**full** | string | If there is a display name: *"display name" \<local@domain\>*. If there isn't: *local@domain*. |
 | .**simple** | string | The email address: *local@domain*. |
 | .**displayName** | string | The display name or an empty string. |
 | .**localPart** | string | The local part of the address (to the left of "@"). |
